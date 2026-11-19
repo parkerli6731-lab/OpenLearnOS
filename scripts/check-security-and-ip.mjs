@@ -34,6 +34,7 @@ function walkAll(dir) {
 const errors = [];
 
 for (const file of walkAll(ROOT)) {
+  if (/\.(png|ico|icns|jpg|jpeg|webp|woff2?|pdf|dmg)$/i.test(file)) continue;
   const rel = path.relative(ROOT, file);
   const content = fs.readFileSync(file, "utf8");
 

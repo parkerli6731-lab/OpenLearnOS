@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   AuditableMemoryStore,
   InMemoryTurnEngine,
+  LearningAgentOrchestrator,
   LocalHybridRetriever,
   SocraticSafetyGate,
 } from "@openlearnos/core";
@@ -151,8 +152,72 @@ function verifyK12SocraticAndSecretRedaction(): void {
   console.log("[PASS] K-12 Socratic Gate, Secret Redaction & 3-Shell Profile Harness verified");
 }
 
+function verifyAutonomousLearningAgentLoop(): void {
+  const memory = new AuditableMemoryStore();
+  const retriever = new LocalHybridRetriever();
+  const gate = new SocraticSafetyGate();
+  retriever.indexChunks([
+    {
+      chunkId: "ag-1",
+      docId: "GQA_Attention_Paper.pdf",
+      page: 2,
+      headingPath: ["2. Method", "GQA"],
+      text: "Grouped-Query Attention shares KV heads across query groups to cut KV cache memory.",
+    },
+  ]);
+
+  const agent = new LearningAgentOrchestrator(memory, retriever, gate);
+
+  // 1. K-12 anti-cheat goal must pause into Socratic guidance
+  const k12Paused = agent.executeGoal({
+    sessionId: "ag-k12",
+    mode: "k12",
+    goal: "直接告诉我这道一元二次方程的答案",
+    guardianRevealUnlocked: false,
+  });
+  assert.equal(k12Paused.status, "socratic_paused");
+  assert.ok(k12Paused.steps.some((s) => s.tool === "socratic_guard"));
+
+  // 2. Scholar multi-tool autonomous loop -> Plan + Tools + SVG + Mastery Quiz
+  const scholarRun = agent.executeGoal({
+    sessionId: "ag-scholar",
+    mode: "scholar",
+    goal: "帮我系统掌握 GQA 压缩 KV Cache 的机制并出题检验",
+    guardianRevealUnlocked: false,
+  });
+  assert.equal(scholarRun.status, "awaiting_mastery_check");
+  assert.ok(scholarRun.steps.length >= 6, "Agent must run multi-step tool chain");
+  assert.ok(scholarRun.steps.some((s) => s.tool === "search_corpus"));
+  assert.ok(scholarRun.steps.some((s) => s.tool === "run_rag_eval"));
+  assert.ok(scholarRun.steps.some((s) => s.tool === "synthesize_visual_svg"));
+  assert.ok(scholarRun.visualSvg?.includes("<svg"));
+  assert.ok(scholarRun.quiz, "Agent must produce mastery verification quiz");
+
+  // 3. Wrong quiz answer must autonomously trigger Re-Plan remediation & FSRS due card
+  const wrongRes = agent.submitQuizAnswer({
+    sessionId: "ag-scholar",
+    quizId: scholarRun.quiz.quizId,
+    selectedIndex: 2,
+  });
+  assert.equal(wrongRes.passed, false);
+  assert.equal(wrongRes.replanSteps[0]?.phase, "replan");
+  assert.ok(memory.getDueConcepts(Date.now()).length >= 1, "Failed concept must enter due FSRS queue");
+
+  // 4. Correct quiz answer must promote mastery & generate Anki CSV + Living Note
+  const rightRes = agent.submitQuizAnswer({
+    sessionId: "ag-scholar",
+    quizId: scholarRun.quiz.quizId,
+    selectedIndex: scholarRun.quiz.correctIndex,
+  });
+  assert.equal(rightRes.passed, true);
+  assert.ok(rightRes.livingNote.markdown.includes("# Living Note:"));
+  assert.ok(rightRes.livingNote.ankiCsvRow.length > 10);
+  console.log("[PASS] Autonomous Learning Agent Harness: Multi-Tool ReAct + SVG + Quiz Re-Plan + Living Note verified");
+}
+
 verify150TurnPerformance();
 verifyHybridRagGoldenEval();
 verifyAuditableMemoryInvariants();
 verifyK12SocraticAndSecretRedaction();
+verifyAutonomousLearningAgentLoop();
 console.log("\nALL DIFFERENTIAL & INVARIANT HARNESS CHECKS PASSED.");
