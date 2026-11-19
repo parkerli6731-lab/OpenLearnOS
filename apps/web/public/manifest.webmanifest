@@ -1,0 +1,17 @@
+{
+  "name": "OpenLearnOS — Zero-Friction AI-Native Learning OS",
+  "short_name": "OpenLearnOS",
+  "description": "Local-first, AI-Native open learning workspace for K-12, researchers, and lifelong learners.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0F172A",
+  "theme_color": "#1D4ED8",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "name": "openlearnos",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Zero-friction, local-first, AI-Native open learning OS for K-12, researchers, and lifelong learners.",
   "type": "module",
@@ -8,17 +8,20 @@
     "node": ">=22.0.0"
   },
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
     "gate:boundaries": "node scripts/check-boundaries.mjs",
     "gate:security-ip": "node scripts/check-security-and-ip.mjs",
-    "typecheck": "tsc -b packages/contracts packages/core packages/ui packages/harness",
+    "typecheck": "tsc -b packages/contracts packages/core packages/ui packages/harness && tsc -p apps/web/tsconfig.json --noEmit",
     "harness": "node packages/harness/src/run-harness.ts",
-    "verify": "npm run gate:boundaries && npm run gate:security-ip && npm run typecheck && npm run harness"
+    "dev:web": "npm --workspace=@openlearnos/web run dev",
+    "build:web": "npm --workspace=@openlearnos/web run build",
+    "verify": "npm run gate:boundaries && npm run gate:security-ip && npm run typecheck && npm run harness && npm run build:web"
   },
   "devDependencies": {
-    "@types/node": "^26.6.6",
+    "@types/node": "^25.5.0",
     "typescript": "^5.8.0"
   }
 }

@@ -1,0 +1,19 @@
+{
+  "name": "@openlearnos/web",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@openlearnos/contracts": "0.1.0",
+    "@openlearnos/core": "0.1.0",
+    "@openlearnos/ui": "0.1.0"
+  },
+  "devDependencies": {
+    "vite": "^6.3.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  }
+}

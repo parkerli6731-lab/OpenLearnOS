@@ -46,8 +46,8 @@ for (const file of walkAll(ROOT)) {
     }
   }
 
-  // 2. Trademark clean-room hygiene in runtime source packages
-  if (rel.startsWith("packages/") && rel.includes("/src/")) {
+  // 2. Trademark clean-room hygiene in runtime source packages & apps
+  if ((rel.startsWith("packages/") || rel.startsWith("apps/")) && rel.includes("/src/")) {
     for (const re of PROHIBITED_TRADEMARK_REGEXES) {
       if (re.test(content)) {
         errors.push(`TRADEMARK_BLEED in ${rel}: matched ${re}`);

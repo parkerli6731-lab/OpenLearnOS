@@ -3,41 +3,36 @@
 **Zero-friction, local-first, AI-Native open learning OS for K-12 learners, researchers, and lifelong learners.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Live PWA](https://img.shields.io/badge/Live%20PWA-GitHub%20Pages-2563EB.svg)](https://parkerli6731-lab.github.io/OpenLearnOS/)
 
-## Why OpenLearnOS?
+> **Zero-Install Live App:** [https://parkerli6731-lab.github.io/OpenLearnOS/](https://parkerli6731-lab.github.io/OpenLearnOS/)  
+> Open in any modern browser — works immediately in **Zero-Key Local Demo Mode** or connect your own **Client-Only BYOK** gateway (SmartRouter / Ollama / OpenAI-compatible). Your API key stays strictly inside your browser's `localStorage` and never touches a third-party server.
 
-Existing open-source AI tutoring platforms often require heavy Python/Node stacks, hundreds of dependencies, and complex port/API setup — locking out K-12 families and non-technical lifelong learners while suffering from long-session freezes and browser typing lag.
+## Three Adaptive Learning Modes (One Isolated Core)
 
-OpenLearnOS applies **AI-Native Box-with-Invariants engineering** and **Clean-Room Differential Verification** to deliver one ultra-light, physically isolated core engine wrapped in three audience-adaptive shells:
-
-| Adaptive Mode | Target Audience | Core Capabilities |
+| Adaptive Mode | Target Audience | Key Capabilities |
 | :--- | :--- | :--- |
-| **Spark (`k12`)** | K-12 Students & Parents | Socratic anti-cheat guidance gate, scanned homework vision/OCR, local-first COPPA-aligned privacy, read-only Guardian weekly report |
-| **Scholar (`scholar`)** | Researchers & Graduates | Dual-pane PDF grounded reading, citation traceability, local Hybrid RAG + built-in `evaluateRetrieval` (`Recall@k`/`MRR`/`nDCG@k`), 150-turn non-blocking sessions |
-| **Lifelong (`lifelong`)** | Working Adults & Self-Learners | Fragmented voice/note capture, FSRS spaced-repetition daily 3-card loop, instant sandboxed visual synthesis, living knowledge notes |
+| **🎒 Spark (`k12`)** | K-12 Students & Parents | Socratic anti-cheat guidance lock (`SocraticSafetyGate`), guardian unlock toggle, read-only local weekly report, 100% local-first privacy |
+| **🎓 Scholar (`scholar`)** | Researchers & Graduates | Dual-pane grounded reader with local `.md`/`.txt` upload, live `kb-eval` (`Recall@k`/`MRR`/`nDCG@k`), 150-turn non-blocking stress benchmark |
+| **🌱 Lifelong (`lifelong`)** | Working Adults & Self-Learners | Fragmented quick-capture, FSRS daily review deck, auditable L1 → L2 memory graph with 1-click cascade purge |
 
-## Architecture (Box with Invariants)
+## Architecture (Box with Invariants + Worker Isolation)
 
 - `packages/contracts` — Pure TypeScript protocols & invariants (**0 runtime dependencies**).
 - `packages/core` — Pure, DOM-free, vendor-agnostic engine (`TurnEngine`, `AuditableMemoryStore`, `LocalHybridRetriever`, `SocraticSafetyGate`).
-- `packages/ui` — Adaptive 3-mode shell profiles with virtualized message rendering & lazy KaTeX invariants.
+- `packages/ui` — Adaptive 3-mode shell profiles with virtualized message viewport invariants.
 - `packages/harness` — Automated differential & invariant verifier (`150-turn < 50ms`, RAG Golden Eval, K-12 & Memory audit gates).
-- `specs/` — Clean-room functional specifications, `NEVER_BREAK` invariants, compliance firewall, and full operational SOPs.
+- `apps/web` — Zero-install offline-capable **Web PWA** where Core runs inside a physically isolated **Web Worker** via typed RPC.
 
-## Quick Verification (Phase 0)
+## Local Development & Verification
 
 ```bash
 npm install
-npm run verify
+npm run verify      # Runs all 4 gates + strict TS + Differential Harness + Production PWA build
+npm run dev:web     # Starts local Vite dev server
 ```
 
-`npm run verify` executes all 4 automated CI gates:
-1. `gate:boundaries` — Enforces strict unidirectional package isolation.
-2. `gate:security-ip` — Enforces zero plaintext secrets and clean-room trademark hygiene.
-3. `typecheck` — Strict TypeScript project-reference compilation (`strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`).
-4. `harness` — Runs 150-turn stress benchmark, RAG golden evaluation, auditable memory provenance tests, and K-12 Socratic safety checks.
-
-## Documentation & SOPs
+## Documentation & Operational SOPs
 
 - [Core Invariants (`NEVER_BREAK`)](specs/00-NEVER_BREAK.md)
 - [Architecture & Physical Boundaries](specs/01-ARCHITECTURE_AND_BOUNDARIES.md)
