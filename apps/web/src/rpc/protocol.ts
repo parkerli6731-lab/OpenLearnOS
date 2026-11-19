@@ -1,0 +1,62 @@
+import type {
+  CitationRef,
+  ContextWindowSlice,
+  DocumentChunk,
+  EvalCase,
+  L1TraceRecord,
+  L2ConceptNode,
+  PersonaMode,
+  RetrievalEvalReport,
+  RetrievalHit,
+  SafetyEvaluation,
+  TurnRecord,
+} from "@openlearnos/contracts";
+
+export interface MemorySnapshot {
+  readonly traces: readonly L1TraceRecord[];
+  readonly concepts: readonly L2ConceptNode[];
+  readonly dueConcepts: readonly L2ConceptNode[];
+}
+
+export type WorkerRequestPayload =
+  | { type: "INIT_SEED" }
+  | { type: "ADD_DOC_CHUNKS"; chunks: readonly DocumentChunk[] }
+  | {
+      type: "PREPARE_TURN";
+      sessionId: string;
+      mode: PersonaMode;
+      userPrompt: string;
+      guardianRevealUnlocked: boolean;
+    }
+  | {
+      type: "COMMIT_ASSISTANT_TURN";
+      sessionId: string;
+      content: string;
+      citations: readonly CitationRef[];
+      topicTag?: string;
+    }
+  | { type: "STRESS_150"; sessionId: string }
+  | { type: "RUN_RAG_EVAL"; cases: readonly EvalCase[]; topK: number }
+  | { type: "GET_MEMORY" }
+  | { type: "PURGE_TRACE"; traceId: string }
+  | { type: "MARK_REVIEWED"; conceptId: string; remembered: boolean };
+
+export type WorkerRequest = WorkerRequestPayload & { id: number };
+
+export type WorkerResponse =
+  | { id: number; ok: true; payload: unknown }
+  | { id: number; ok: false; error: string };
+
+export interface PreparedTurnResult {
+  readonly scrubbedPrompt: string;
+  readonly safety: SafetyEvaluation;
+  readonly userTurn: TurnRecord;
+  readonly hits: readonly RetrievalHit[];
+  readonly context: ContextWindowSlice;
+}
+
+export interface Stress150Result {
+  readonly totalTurns: number;
+  readonly maxBuildTimeMs: number;
+  readonly lastSlice: ContextWindowSlice;
+}

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Gate 1: Box-with-Invariants Architectural Boundary Enforcer.
- * Verifies strict unidirectional dependency rules across packages/*.
+ * Verifies strict unidirectional dependency & thread-isolation rules across packages/* and apps/web/*.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -57,10 +57,22 @@ for (const [pkg, patterns] of Object.entries(FORBIDDEN_RULES)) {
   }
 }
 
+// Enforce Worker Physical Isolation inside apps/web:
+// ONLY apps/web/src/worker/* may import @openlearnos/core; UI thread files must go through RPC!
+const webSrcDir = path.join(ROOT, "apps", "web", "src");
+for (const file of walkTsFiles(webSrcDir)) {
+  const rel = path.relative(ROOT, file);
+  if (rel.startsWith(`apps${path.sep}web${path.sep}src${path.sep}worker${path.sep}`)) continue;
+  const content = fs.readFileSync(file, "utf8");
+  if (/from\s+["']@openlearnos\/core/.test(content) || /import\s*\(\s*["']@openlearnos\/core/.test(content) || /from\s+["'][^"']*packages\/core/.test(content)) {
+    violations.push(`${rel} bypassed Web Worker RPC boundary by importing @openlearnos/core directly`);
+  }
+}
+
 if (violations.length > 0) {
   console.error("[FAIL] Architectural Boundary Gate failed:");
   for (const v of violations) console.error("  -", v);
   process.exit(1);
 }
 
-console.log("[PASS] Gate 1 — Architectural Boundaries (Box with Invariants): 0 violations.");
+console.log("[PASS] Gate 1 — Architectural Boundaries & Worker Isolation (Box with Invariants): 0 violations.");

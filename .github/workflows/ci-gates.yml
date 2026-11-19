@@ -22,14 +22,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Gate 1 — Architectural Import Boundaries (Box with Invariants)
+      - name: Gate 1 — Architectural Import Boundaries & Worker Isolation
         run: npm run gate:boundaries
 
       - name: Gate 2 — Zero-Leak Secrets & Clean-Room Trademark Audit
         run: npm run gate:security-ip
 
-      - name: Gate 3 — Strict TypeScript Contract Check
+      - name: Gate 3 — Strict TypeScript Contract & PWA Typecheck
         run: npm run typecheck
 
       - name: Gate 4 — Differential Verification Harness (150-Turn, RAG, K-12, Memory)
         run: npm run harness
+
+      - name: Gate 5 — Production Zero-Install PWA Bundle Build
+        run: VITE_BASE_PATH="/OpenLearnOS/" npm run build:web
