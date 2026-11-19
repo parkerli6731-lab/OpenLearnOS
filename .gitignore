@@ -16,7 +16,9 @@ data/
 .env
 .env.*
 !.env.example
-*secret*
+.secrets*
+*.secret
+*.secrets
 *credential*
 *.key
 *.pem

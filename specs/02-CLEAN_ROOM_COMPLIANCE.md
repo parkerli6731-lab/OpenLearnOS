@@ -5,7 +5,7 @@
    - Only abstract functional specifications (`specs/`) and original interface contracts (`packages/contracts/`) cross into implementation.
    - Zero source files, prompt YAML templates, CSS stylesheets, icon assets, or marketing copy may be copied from any third-party tutoring project.
 2. **Trademark Hygiene**:
-   - `scripts/check-secrets-and-ip.mjs` automatically fails CI if prohibited third-party product trademarks appear in runtime source (`packages/*/src/**`).
+   - `scripts/check-security-and-ip.mjs` automatically fails CI if prohibited third-party product trademarks appear in runtime source (`packages/*/src/**`).
    - Factual academic/conceptual attribution is confined solely to `THIRD_PARTY_NOTICES.md` and `README.md`.
 3. **License Purity**:
    - Original codebase is licensed under `MIT`.
