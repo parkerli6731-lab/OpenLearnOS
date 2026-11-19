@@ -1,0 +1,10 @@
+{
+  "name": "@openlearnos/harness",
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@openlearnos/contracts": "0.1.0",
+    "@openlearnos/core": "0.1.0",
+    "@openlearnos/ui": "0.1.0"
+  }
+}

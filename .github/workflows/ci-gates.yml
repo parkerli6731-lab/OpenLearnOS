@@ -1,0 +1,35 @@
+name: OpenLearnOS CI — Boundaries, Security/IP & Harness Gates
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  verify-invariants:
+    name: Architectural Boundaries, Clean-Room IP, Typecheck & Harness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Gate 1 — Architectural Import Boundaries (Box with Invariants)
+        run: npm run gate:boundaries
+
+      - name: Gate 2 — Zero-Leak Secrets & Clean-Room Trademark Audit
+        run: npm run gate:security-ip
+
+      - name: Gate 3 — Strict TypeScript Contract Check
+        run: npm run typecheck
+
+      - name: Gate 4 — Differential Verification Harness (150-Turn, RAG, K-12, Memory)
+        run: npm run harness

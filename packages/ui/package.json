@@ -1,0 +1,14 @@
+{
+  "name": "@openlearnos/ui",
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@openlearnos/contracts": "0.1.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    }
+  }
+}

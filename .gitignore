@@ -1,0 +1,29 @@
+# Dependencies & build outputs
+node_modules/
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# Local runtime state & private user learning data (NEVER commit)
+data/
+.openlearnos/
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets & environment files (Zero-Leak Gate)
+.env
+.env.*
+!.env.example
+*secret*
+*credential*
+*.key
+*.pem
+*.p12
+
+# OS & editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
