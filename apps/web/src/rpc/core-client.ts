@@ -8,8 +8,10 @@ import type {
   TurnRecord,
 } from "@openlearnos/contracts";
 import type {
+  AgentGoalWorkerPayload,
   MemorySnapshot,
   PreparedTurnResult,
+  QuizSubmitWorkerPayload,
   Stress150Result,
   WorkerRequestPayload,
   WorkerResponse,
@@ -106,5 +108,33 @@ export class CoreWorkerClient {
 
   markReviewed(conceptId: string, remembered: boolean): Promise<MemorySnapshot> {
     return this.call({ type: "MARK_REVIEWED", conceptId, remembered });
+  }
+
+  runAgentGoal(
+    sessionId: string,
+    mode: PersonaMode,
+    goal: string,
+    guardianRevealUnlocked: boolean
+  ): Promise<AgentGoalWorkerPayload> {
+    return this.call({
+      type: "RUN_AGENT_GOAL",
+      sessionId,
+      mode,
+      goal,
+      guardianRevealUnlocked,
+    });
+  }
+
+  submitQuiz(
+    sessionId: string,
+    quizId: string,
+    selectedIndex: number
+  ): Promise<QuizSubmitWorkerPayload> {
+    return this.call({
+      type: "SUBMIT_QUIZ",
+      sessionId,
+      quizId,
+      selectedIndex,
+    });
   }
 }

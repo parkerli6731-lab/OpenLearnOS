@@ -1,4 +1,5 @@
 import type {
+  AgentRunResult,
   CitationRef,
   ContextWindowSlice,
   DocumentChunk,
@@ -6,6 +7,7 @@ import type {
   L1TraceRecord,
   L2ConceptNode,
   PersonaMode,
+  QuizEvaluationResult,
   RetrievalEvalReport,
   RetrievalHit,
   SafetyEvaluation,
@@ -39,7 +41,30 @@ export type WorkerRequestPayload =
   | { type: "RUN_RAG_EVAL"; cases: readonly EvalCase[]; topK: number }
   | { type: "GET_MEMORY" }
   | { type: "PURGE_TRACE"; traceId: string }
-  | { type: "MARK_REVIEWED"; conceptId: string; remembered: boolean };
+  | { type: "MARK_REVIEWED"; conceptId: string; remembered: boolean }
+  | {
+      type: "RUN_AGENT_GOAL";
+      sessionId: string;
+      mode: PersonaMode;
+      goal: string;
+      guardianRevealUnlocked: boolean;
+    }
+  | {
+      type: "SUBMIT_QUIZ";
+      sessionId: string;
+      quizId: string;
+      selectedIndex: number;
+    };
+
+export interface AgentGoalWorkerPayload {
+  readonly run: AgentRunResult;
+  readonly memory: MemorySnapshot;
+}
+
+export interface QuizSubmitWorkerPayload {
+  readonly evaluation: QuizEvaluationResult;
+  readonly memory: MemorySnapshot;
+}
 
 export type WorkerRequest = WorkerRequestPayload & { id: number };
 

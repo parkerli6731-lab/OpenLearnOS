@@ -1,7 +1,10 @@
 import "./styles.css";
 import type {
+  AgentRunResult,
   DocumentChunk,
+  LivingNoteExport,
   PersonaMode,
+  QuizEvaluationResult,
   RetrievalEvalReport,
   TurnRecord,
 } from "@openlearnos/contracts";
@@ -14,8 +17,8 @@ import {
   loadLocalByok,
   saveLocalByok,
 } from "./ui/byok-client.ts";
+import { loadUploadedChunks, saveUploadedChunks } from "./ui/local-db.ts";
 
-// Register Service Worker for offline PWA capability
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./sw.js").catch(() => {});
@@ -26,47 +29,53 @@ const coreClient = new CoreWorkerClient();
 
 interface AppState {
   mode: PersonaMode;
+  interactionStyle: "agent" | "chat";
   sessionId: string;
   guardianUnlocked: boolean;
   chunks: readonly DocumentChunk[];
+  uploadedChunks: DocumentChunk[];
   highlightedChunkId: string | null;
   visibleTurns: readonly TurnRecord[];
   totalStoredTurns: number;
   lastBuildMs: number;
   memory: MemorySnapshot;
   ragReport: RetrievalEvalReport | null;
+  activeAgentRun: AgentRunResult | null;
+  lastQuizEval: QuizEvaluationResult | null;
   statusNote: string;
 }
 
-const MODE_PROMPTS: Record<PersonaMode, readonly string[]> = {
+const MODE_GOALS: Record<PersonaMode, readonly string[]> = {
   k12: [
+    "帮我 10 分钟彻底掌握一元二次方程判别式并出题检验",
     "直接告诉我这道一元二次方程的答案",
-    "一元二次方程判别式怎么判断实根个数？",
-    "为什么代入 b = -5 时容易丢负号？",
   ],
   scholar: [
+    "帮我系统梳理 GQA 与 FlashAttention-2 的显存/IO 优化差异并出题验证",
     "对比 MHA 与 GQA 的 KV Cache 显存压缩比",
-    "FlashAttention-2 如何通过 SRAM Tiling 减少 HBM IO？",
-    "结合知识库总结推理加速的两条正交路线",
   ],
   lifelong: [
-    "用 5 分钟心智模型解释 FSRS 为什么比死记硬背高效",
-    "帮我把今天读的间隔重复原则提炼成 3 条行动准则",
+    "用 5 分钟心智模型帮我掌握 FSRS 间隔重复闭环并生成明日复习卡",
+    "把间隔重复原则提炼成 3 条可执行行动准则",
   ],
 };
 
 const state: AppState = {
-  mode: (window.localStorage.getItem("openlearnos_mode") as PersonaMode) || "k12",
+  mode: (window.localStorage.getItem("openlearnos_mode") as PersonaMode) || "scholar",
+  interactionStyle: "agent",
   sessionId: "session-main",
   guardianUnlocked: false,
   chunks: [],
+  uploadedChunks: [],
   highlightedChunkId: null,
   visibleTurns: [],
   totalStoredTurns: 0,
   lastBuildMs: 0,
   memory: { traces: [], concepts: [], dueConcepts: [] },
   ragReport: null,
-  statusNote: "Core Web Worker 已隔离就绪",
+  activeAgentRun: null,
+  lastQuizEval: null,
+  statusNote: "Autonomous Agent Worker 已隔离就绪",
 };
 
 function escapeHtml(s: string): string {
@@ -75,6 +84,16 @@ function escapeHtml(s: string): string {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function downloadTextFile(filename: string, content: string, mime = "text/plain;charset=utf-8"): void {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function renderShell(): void {
@@ -92,8 +111,8 @@ function renderShell(): void {
         <div class="brand">
           <img src="./icon.svg" alt="OpenLearnOS" />
           <div>
-            <div>OpenLearnOS <small>v0.2 PWA</small></div>
-            <small>${escapeHtml(profile.displayName)} · Worker 物理隔离</small>
+            <div>OpenLearnOS <small>v0.3 Agent OS</small></div>
+            <small>${escapeHtml(profile.displayName)} · Worker 隔离 + IndexedDB</small>
           </div>
         </div>
 
@@ -104,8 +123,8 @@ function renderShell(): void {
         </nav>
 
         <div class="top-actions">
-          <span class="pill ok" id="latency-pill">窗口构建: ${state.lastBuildMs.toFixed(2)} ms (${state.totalStoredTurns} 轮)</span>
-          <button class="btn" id="stress-btn" title="向 Worker 注入 150 轮含公式对话并实测延迟">⚡ 150轮压测</button>
+          <span class="pill ok" id="latency-pill">窗口: ${state.lastBuildMs.toFixed(2)} ms (${state.totalStoredTurns} 轮)</span>
+          <button class="btn" id="stress-btn">⚡ 150轮压测</button>
           <button class="btn ${byokReady ? "primary" : ""}" id="byok-btn">🔑 ${byokReady ? "BYOK 已配(仅本地)" : "配置本地模型 (BYOK)"}</button>
         </div>
       </header>
@@ -116,10 +135,10 @@ function renderShell(): void {
           <div class="pane-header">
             <span>📚 双栏溯源资料库 (${state.chunks.length} 段)</span>
           </div>
-          <div class="pane-body" id="corpus-list">
+          <div class="pane-body">
             <label class="upload-zone" for="file-upload">
-              + 点击上传本地 .md / .txt 资料即时建库<br/>
-              <small>100% 端侧解析，不上传任何服务器</small>
+              + 上传本地 .md / .txt 资料建库（自动持久化至 IndexedDB）<br/>
+              <small>刷新浏览器不丢失 · 100% 端侧解析零上传</small>
               <input id="file-upload" type="file" accept=".md,.txt,.csv,.json" multiple hidden />
             </label>
             ${state.chunks
@@ -139,33 +158,27 @@ function renderShell(): void {
           </div>
         </section>
 
-        <!-- Center Pane: Virtualized Windowed Chat + Decoupled Composer -->
+        <!-- Center Pane: Autonomous Learning Agent Loop OR Quick Chat -->
         <section class="pane chat-pane">
           <div class="pane-header">
-            <span>💬 ${escapeHtml(profile.displayName)} 对话引擎</span>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <button class="btn ${state.interactionStyle === "agent" ? "primary" : ""}" id="style-agent">🤖 Agent 自主闭环</button>
+              <button class="btn ${state.interactionStyle === "chat" ? "primary" : ""}" id="style-chat">💬 快速问答</button>
+            </div>
             <span class="pill">${escapeHtml(state.statusNote)}</span>
           </div>
 
           <div class="quick-prompts">
-            ${MODE_PROMPTS[state.mode]
+            ${MODE_GOALS[state.mode]
               .map((q) => `<button class="chip" data-quick="${escapeHtml(q)}">${escapeHtml(q)}</button>`)
               .join("")}
           </div>
 
           <div class="messages" id="messages-view">
             ${
-              state.visibleTurns.length === 0
-                ? `<div class="card">
-                    <div class="card-title">👋 欢迎来到 OpenLearnOS（零安装 · Local-First）</div>
-                    <div>点击上方快捷问题体验当前模式：${
-                      state.mode === "k12"
-                        ? "试着点「直接告诉我这道一元二次方程的答案」，观察苏格拉底防抄锁实时拦截！"
-                        : state.mode === "scholar"
-                        ? "试着对比 GQA 与 FlashAttention-2，或在右侧运行 RAG Eval 量化指标！"
-                        : "试着体验 FSRS 每日复习卡与右侧可审计 L1→L2 记忆级联清除！"
-                    }</div>
-                  </div>`
-                : renderWindowedMessages(state.visibleTurns)
+              state.interactionStyle === "agent"
+                ? renderAgentWorkspace()
+                : renderChatWorkspace()
             }
           </div>
 
@@ -175,18 +188,16 @@ function renderShell(): void {
               type="text"
               autocomplete="off"
               placeholder="${
-                state.mode === "k12"
-                  ? "输入作业问题（默认苏格拉底引导，不直接泄答案）..."
-                  : state.mode === "scholar"
-                  ? "输入论文精读、推导或跨文献对比问题..."
-                  : "输入碎片笔记或概念问题，自动沉淀 FSRS 卡片..."
+                state.interactionStyle === "agent"
+                  ? "下达一个【学习目标】给 Agent（将自动拆解计划 → 链式调工具 → 出图 → 出题检验 → 错题 Re-Plan）..."
+                  : "输入单轮快速问答..."
               }"
             />
-            <button class="btn primary" type="submit">发送</button>
+            <button class="btn primary" type="submit">${state.interactionStyle === "agent" ? "派发目标给 Agent" : "发送"}</button>
           </form>
         </section>
 
-        <!-- Right Pane: Adaptive Governance / Eval / Auditable Memory -->
+        <!-- Right Pane: Governance / Eval / FSRS / Auditable Memory -->
         <section class="pane">
           <div class="pane-header">
             <span>${
@@ -212,10 +223,10 @@ function renderShell(): void {
           <button class="btn" id="close-byok">✕</button>
         </div>
         <div class="card-meta">
-          安全不变量：密钥仅保存在当前浏览器 <code>localStorage</code>，绝不上传至任何后端服务器；留空也可使用内置离线演示引擎。
+          安全不变量：密钥仅保存在当前浏览器 <code>localStorage</code>，绝不上传至任何后端服务器；留空也可直接运行完整离线 Agent 工具闭环。
         </div>
         <div class="field">
-          <label>OpenAI 兼容 Base URL（如本机 SmartRouter / Ollama / OpenAI）</label>
+          <label>OpenAI 兼容 Base URL（本机 SmartRouter / Ollama / OpenAI）</label>
           <input id="byok-url" type="text" value="${escapeHtml(byok.baseUrl)}" placeholder="http://127.0.0.1:4000/v1" />
         </div>
         <div class="field">
@@ -242,35 +253,144 @@ function renderShell(): void {
   if (msgEl) msgEl.scrollTop = msgEl.scrollHeight;
 }
 
-function renderWindowedMessages(turns: readonly TurnRecord[]): string {
-  // Windowed viewport: render only the latest 30 turns in DOM to guarantee <16ms typing across all browsers
+function renderAgentWorkspace(): string {
+  const run = state.activeAgentRun;
+  if (!run) {
+    return `
+      <div class="card">
+        <div class="card-title">🤖 真正的学习 Agent（非被动聊天框）</div>
+        <div>与传统“一问一答”的聊天机器人不同，在 <strong>Agent 自主闭环模式</strong> 下，你只需下达一个<strong>学习目标</strong>：</div>
+        <ul style="margin:6px 0 0 18px; padding:0;">
+          <li><strong>Step 1 自主拆解 Plan</strong>：按 K-12 / Scholar / Lifelong 切换教学策略；</li>
+          <li><strong>Step 2 链式调用 Tools</strong>：自动依次调用 <code>socratic_guard</code> → <code>check_memory</code> → <code>search_corpus</code> → <code>run_rag_eval</code> → <code>synthesize_visual_svg</code>；</li>
+          <li><strong>Step 3 强制掌握度验证门控</strong>：生成检验题挂起等你作答——<strong>答错自动触发 Re-Plan 补强并置顶 FSRS 错题队列</strong>，答对自动写入 L1→L2 记忆并可一键导出 Markdown / Anki 卡片！</li>
+        </ul>
+        <div style="margin-top:8px;">👆 点击上方任意蓝色快捷目标芯片，立即观察 Agent 完整自主执行轨迹。</div>
+      </div>
+    `;
+  }
+
+  const evalRes = state.lastQuizEval;
+  const activeNote: LivingNoteExport | undefined = evalRes?.livingNote ?? run.livingNote;
+
+  return `
+    <div class="card highlight">
+      <div class="card-title">
+        <span>🤖 Agent 任务轨迹 [${escapeHtml(run.runId)}]</span>
+        <span class="trace-tag">${escapeHtml(run.status)}</span>
+      </div>
+      <div class="card-meta">学习目标：${escapeHtml(run.goal)}</div>
+      <div style="display:flex; flex-direction:column; gap:6px; margin-top:6px;">
+        ${run.steps
+          .map(
+            (s) => `
+          <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:7px 9px; font-size:0.8rem;">
+            <div style="display:flex; justify-content:space-between; gap:6px; margin-bottom:2px;">
+              <strong>#${s.stepIndex} [${escapeHtml(s.phase.toUpperCase())}] ${s.tool ? `<code>${escapeHtml(s.tool)}</code>` : ""}</strong>
+              <span class="trace-tag">${s.durationMs} ms</span>
+            </div>
+            <div style="color:var(--muted);">思考：${escapeHtml(s.thought)}</div>
+            <div>观测：${escapeHtml(s.observation)}</div>
+          </div>
+        `
+          )
+          .join("")}
+      </div>
+    </div>
+
+    ${
+      run.visualSvg
+        ? `<div class="card">
+            <div class="card-title"><span>📐 Agent 自主合成交互概念图（零本地渲染依赖）</span></div>
+            <div style="overflow-x:auto;">${run.visualSvg}</div>
+          </div>`
+        : ""
+    }
+
+    <div class="card">
+      <div style="white-space:pre-wrap;">${escapeHtml(run.synthesisMarkdown)}</div>
+      ${
+        run.citations.length > 0
+          ? `<div style="margin-top:8px; display:flex; gap:4px; flex-wrap:wrap;">${run.citations
+              .map((c) => `<span class="trace-tag">${escapeHtml(c.docId)} · P.${c.page}</span>`)
+              .join("")}</div>`
+          : ""
+      }
+    </div>
+
+    ${
+      run.quiz
+        ? `<div class="card" style="border-left:4px solid var(--warn);">
+            <div class="card-title"><span>🎯 掌握度验证门控（答错将自动触发 Agent Re-Plan）</span></div>
+            <div style="font-weight:600; margin:6px 0;">${escapeHtml(run.quiz.question)}</div>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              ${run.quiz.options
+                .map(
+                  (opt, idx) => `
+                <button class="btn" style="text-align:left;" data-quiz-id="${escapeHtml(run.quiz!.quizId)}" data-quiz-idx="${idx}">
+                  ${String.fromCharCode(65 + idx)}. ${escapeHtml(opt)}
+                </button>
+              `
+                )
+                .join("")}
+            </div>
+          </div>`
+        : ""
+    }
+
+    ${
+      evalRes
+        ? `<div class="card" style="border-left:4px solid ${evalRes.passed ? "var(--good)" : "var(--danger)"};">
+            <div class="card-title"><span>${evalRes.passed ? "✅ 掌握度验证通过" : "🔄 Agent 自动触发 Re-Plan 纠偏"}</span></div>
+            <div style="margin-bottom:8px;">${escapeHtml(evalRes.feedback)}</div>
+            ${evalRes.replanSteps
+              .map(
+                (rs) => `<div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:6px 8px; font-size:0.78rem; margin-bottom:6px;">
+                  <strong>[${escapeHtml(rs.phase.toUpperCase())}] ${rs.tool ? `<code>${escapeHtml(rs.tool)}</code>` : ""}</strong><br/>
+                  ${escapeHtml(rs.thought)}<br/>
+                  <span style="color:var(--muted);">结果：${escapeHtml(rs.observation)}</span>
+                </div>`
+              )
+              .join("")}
+          </div>`
+        : ""
+    }
+
+    ${
+      activeNote
+        ? `<div class="card">
+            <div class="card-title"><span>📦 Living Note 与 Anki 资产沉淀</span></div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
+              <button class="btn primary" id="export-md-btn">⬇ 导出 Markdown 活体笔记</button>
+              <button class="btn" id="export-anki-btn">⬇ 导出 Anki CSV 复习卡</button>
+            </div>
+          </div>`
+        : ""
+    }
+  `;
+}
+
+function renderChatWorkspace(): string {
+  if (state.visibleTurns.length === 0) {
+    return `<div class="card"><div class="card-title">💬 单轮快速问答模式</div><div>可直接输入问题进行单轮双栏溯源问答；如需多步工具编排、出图与错题自动 Re-Plan，请切换左上角 <strong>「🤖 Agent 自主闭环」</strong>。</div></div>`;
+  }
   const maxDom = 30;
-  const hiddenCount = Math.max(0, turns.length - maxDom);
-  const sliced = turns.slice(-maxDom);
+  const hiddenCount = Math.max(0, state.visibleTurns.length - maxDom);
+  const sliced = state.visibleTurns.slice(-maxDom);
   const notice =
     hiddenCount > 0
-      ? `<div class="pill" style="align-self:center;">⚡ 虚拟窗口保护已激活：已折叠前 ${hiddenCount} 条历史 DOM 节点（总计 ${state.totalStoredTurns} 轮），确保 Chrome/Safari/Firefox 输入零卡顿</div>`
+      ? `<div class="pill" style="align-self:center;">⚡ 虚拟窗口保护已激活：已折叠前 ${hiddenCount} 条 DOM（总计 ${state.totalStoredTurns} 轮），确保 Chrome/Safari/Firefox 零卡顿</div>`
       : "";
-
   return (
     notice +
     sliced
-      .map((t) => {
-        const isSocratic = t.content.includes("先不直接给出最终答案");
-        const cites =
-          t.citations.length > 0
-            ? `<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;">${t.citations
-                .map((c) => `<span class="trace-tag">${escapeHtml(c.docId)} · P.${c.page}</span>`)
-                .join("")}</div>`
-            : "";
-        return `
-        <div class="msg ${t.role} ${isSocratic ? "socratic" : ""}">
-          <div class="msg-meta">${t.role === "user" ? "学习者" : "OpenLearnOS"} · #${t.index + 1}</div>
-          <div>${escapeHtml(t.content)}</div>
-          ${cites}
-        </div>
-      `;
-      })
+      .map(
+        (t) => `
+      <div class="msg ${t.role}">
+        <div class="msg-meta">${t.role === "user" ? "学习者" : "OpenLearnOS"} · #${t.index + 1}</div>
+        <div>${escapeHtml(t.content)}</div>
+      </div>`
+      )
       .join("")
   );
 }
@@ -282,7 +402,7 @@ function renderRightPanel(): string {
     parts.push(`
       <div class="card">
         <div class="card-title"><span>🔒 苏格拉底防抄答案锁</span><span class="trace-tag">${state.guardianUnlocked ? "家长已解锁" : "强制生效中"}</span></div>
-        <div class="card-meta">K-12 模式默认拦截直接索要作业答案的请求，转为分步启发引导；数据 100% 留存本机（零儿童 PII 上报）。</div>
+        <div class="card-meta">K-12 模式下，Agent 与聊天双通道均拦截直接泄答案请求，转为分步引导；数据 100% 留存本机。</div>
         <button class="btn ${state.guardianUnlocked ? "danger" : "primary"}" id="toggle-guardian">
           ${state.guardianUnlocked ? "恢复苏格拉底锁" : "家长核对模式：临时解锁解析"}
         </button>
@@ -318,7 +438,6 @@ function renderRightPanel(): string {
     `);
   }
 
-  // FSRS Due Cards (especially prominent in Lifelong & K-12)
   parts.push(`
     <div class="card">
       <div class="card-title"><span>⏱️ FSRS 今日到期复习 (${state.memory.dueConcepts.length})</span></div>
@@ -343,11 +462,10 @@ function renderRightPanel(): string {
     </div>
   `);
 
-  // Auditable L1 -> L2 Memory Graph
   parts.push(`
     <div class="card">
       <div class="card-title"><span>🔍 可审计记忆轨迹 (L1 Trace)</span></div>
-      <div class="card-meta">不变量保障：任何 L2 认知卡片必须绑定有效 L1 证据；删除 L1 轨迹将自动级联清理关联派生记忆。</div>
+      <div class="card-meta">任何 L2 认知卡片必须绑定 L1 证据；删去 L1 轨迹将自动级联清除无源派生记忆。</div>
       ${state.memory.traces
         .slice(0, 6)
         .map(
@@ -357,7 +475,7 @@ function renderRightPanel(): string {
             <span class="trace-tag">${escapeHtml(t.traceId)}</span>
             <div style="font-size:0.78rem; margin-top:2px;">${escapeHtml(t.summary)}</div>
           </div>
-          <button class="btn danger" data-purge="${escapeHtml(t.traceId)}" title="清除轨迹并级联删除无源 L2 概念">删</button>
+          <button class="btn danger" data-purge="${escapeHtml(t.traceId)}">删</button>
         </div>
       `
         )
@@ -378,10 +496,15 @@ function bindEvents(): void {
     };
   });
 
+  const styleAgent = document.getElementById("style-agent");
+  const styleChat = document.getElementById("style-chat");
+  if (styleAgent) styleAgent.onclick = () => { state.interactionStyle = "agent"; renderShell(); };
+  if (styleChat) styleChat.onclick = () => { state.interactionStyle = "chat"; renderShell(); };
+
   document.querySelectorAll<HTMLButtonElement>("[data-quick]").forEach((chip) => {
     chip.onclick = () => {
       const q = chip.dataset.quick;
-      if (q) void handleSend(q);
+      if (q) void handleDispatch(q);
     };
   });
 
@@ -393,7 +516,38 @@ function bindEvents(): void {
       const val = input.value.trim();
       if (!val) return;
       input.value = "";
-      void handleSend(val);
+      void handleDispatch(val);
+    };
+  }
+
+  document.querySelectorAll<HTMLButtonElement>("[data-quiz-id]").forEach((btn) => {
+    btn.onclick = async () => {
+      const quizId = btn.dataset.quizId;
+      const idx = Number(btn.dataset.quizIdx);
+      if (!quizId || Number.isNaN(idx)) return;
+      const res = await coreClient.submitQuiz(state.sessionId, quizId, idx);
+      state.lastQuizEval = res.evaluation;
+      state.memory = res.memory;
+      state.statusNote = res.evaluation.passed
+        ? "Agent 检验通过：已晋升掌握度"
+        : "Agent 已触发 Re-Plan 错题补强";
+      renderShell();
+    };
+  });
+
+  const exportMd = document.getElementById("export-md-btn");
+  if (exportMd) {
+    exportMd.onclick = () => {
+      const note = state.lastQuizEval?.livingNote ?? state.activeAgentRun?.livingNote;
+      if (note) downloadTextFile("OpenLearnOS-Living-Note.md", note.markdown, "text/markdown;charset=utf-8");
+    };
+  }
+
+  const exportAnki = document.getElementById("export-anki-btn");
+  if (exportAnki) {
+    exportAnki.onclick = () => {
+      const note = state.lastQuizEval?.livingNote ?? state.activeAgentRun?.livingNote;
+      if (note) downloadTextFile("OpenLearnOS-Anki-Deck.csv", `Front,Back,Tags\n${note.ankiCsvRow}\n`, "text/csv;charset=utf-8");
     };
   }
 
@@ -415,15 +569,17 @@ function bindEvents(): void {
             chunkId: `local-${f.name}-${idx}-${Date.now()}`,
             docId: f.name,
             page: idx + 1,
-            headingPath: ["本地上传", f.name],
+            headingPath: ["本地持久化资料", f.name],
             text: p.slice(0, 800),
           });
         });
       }
       if (newChunks.length > 0) {
+        state.uploadedChunks.push(...newChunks);
+        await saveUploadedChunks(state.uploadedChunks);
         const res = await coreClient.addDocChunks(newChunks);
         state.chunks = res.chunks;
-        state.statusNote = `已本地建库 +${newChunks.length} 段`;
+        state.statusNote = `已本地建库并写入 IndexedDB (+${newChunks.length} 段)`;
         renderShell();
       }
     };
@@ -432,7 +588,8 @@ function bindEvents(): void {
   const stressBtn = document.getElementById("stress-btn");
   if (stressBtn) {
     stressBtn.onclick = async () => {
-      state.statusNote = "正在 Worker 中执行 150 轮压测...";
+      state.interactionStyle = "chat";
+      state.statusNote = "正在 Worker 执行 150 轮压测...";
       renderShell();
       const res = await coreClient.runStress150(state.sessionId);
       state.totalStoredTurns = res.totalTurns;
@@ -485,7 +642,7 @@ function bindEvents(): void {
       const id = btn.dataset.reviewOk;
       if (!id) return;
       state.memory = await coreClient.markReviewed(id, true);
-      state.statusNote = "FSRS 复习完成：稳定期已自动拉长";
+      state.statusNote = "FSRS 复习完成：稳定期已拉长";
       renderShell();
     };
   });
@@ -495,7 +652,7 @@ function bindEvents(): void {
       const id = btn.dataset.reviewAgain;
       if (!id) return;
       state.memory = await coreClient.markReviewed(id, false);
-      state.statusNote = "FSRS 已缩短复习间隔，明日重测";
+      state.statusNote = "FSRS 已缩短间隔，明日重测";
       renderShell();
     };
   });
@@ -544,41 +701,50 @@ function bindEvents(): void {
   }
 }
 
-async function handleSend(promptText: string): Promise<void> {
+async function handleDispatch(promptText: string): Promise<void> {
+  if (state.interactionStyle === "agent") {
+    state.statusNote = "Agent 正在执行多步规划与工具链...";
+    state.lastQuizEval = null;
+    renderShell();
+
+    const res = await coreClient.runAgentGoal(
+      state.sessionId,
+      state.mode,
+      promptText,
+      state.guardianUnlocked
+    );
+    state.activeAgentRun = res.run;
+    state.memory = res.memory;
+    const topDoc = res.run.citations[0]?.docId;
+    state.highlightedChunkId = state.chunks.find((c) => c.docId === topDoc)?.chunkId ?? null;
+    state.statusNote = `Agent 已完成 ${res.run.steps.length} 步工具调用 (${res.run.status})`;
+    renderShell();
+    return;
+  }
+
   const prep = await coreClient.prepareTurn(
     state.sessionId,
     state.mode,
     promptText,
     state.guardianUnlocked
   );
-
   state.lastBuildMs = prep.context.buildTimeMs;
   state.totalStoredTurns = prep.context.totalStoredTurns;
   state.visibleTurns = prep.context.includedTurns;
   state.highlightedChunkId = prep.hits[0]?.chunk.chunkId ?? null;
 
-  // Enforce K-12 Socratic Gate directly before any model generation
   if (prep.safety.action === "socratic_redirect" && prep.safety.guidancePrompt) {
     const commit = await coreClient.commitAssistantTurn(
       state.sessionId,
       `🛡️ [K-12 苏格拉底引导门控]\n${prep.safety.guidancePrompt}`,
-      prep.hits.slice(0, 1).map((h) => ({
-        docId: h.chunk.docId,
-        page: h.chunk.page,
-        excerpt: h.chunk.text.slice(0, 80),
-      }))
+      []
     );
     state.visibleTurns = commit.context.includedTurns;
     state.totalStoredTurns = commit.context.totalStoredTurns;
-    state.lastBuildMs = commit.context.buildTimeMs;
     state.memory = commit.memory;
-    state.statusNote = "已拦截直给答案，转入苏格拉底启发";
     renderShell();
     return;
   }
-
-  state.statusNote = "生成回答中...";
-  renderShell();
 
   const reply = await generateTutorReply({
     mode: state.mode,
@@ -586,18 +752,10 @@ async function handleSend(promptText: string): Promise<void> {
     hits: prep.hits,
     byok: loadLocalByok(),
   });
-
-  const citations = prep.hits.map((h) => ({
-    docId: h.chunk.docId,
-    page: h.chunk.page,
-    excerpt: h.chunk.text.slice(0, 80),
-  }));
-
   const commit = await coreClient.commitAssistantTurn(
     state.sessionId,
     reply.text,
-    citations,
-    state.mode === "lifelong" ? prep.scrubbedPrompt.slice(0, 24) : undefined
+    prep.hits.map((h) => ({ docId: h.chunk.docId, page: h.chunk.page, excerpt: h.chunk.text.slice(0, 80) }))
   );
   state.visibleTurns = commit.context.includedTurns;
   state.totalStoredTurns = commit.context.totalStoredTurns;
@@ -611,6 +769,16 @@ async function bootstrap(): Promise<void> {
   const seed = await coreClient.initSeed();
   state.chunks = seed.chunks;
   state.memory = seed.memory;
+
+  // Hydrate previously uploaded local documents from IndexedDB
+  const persisted = await loadUploadedChunks();
+  if (persisted.length > 0) {
+    state.uploadedChunks = [...persisted];
+    const updated = await coreClient.addDocChunks(persisted);
+    state.chunks = updated.chunks;
+    state.statusNote = `已从 IndexedDB 恢复 ${persisted.length} 段本地资料`;
+  }
+
   renderShell();
 }
 

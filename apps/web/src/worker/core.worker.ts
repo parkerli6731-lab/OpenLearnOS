@@ -8,12 +8,15 @@ import type {
 import {
   AuditableMemoryStore,
   InMemoryTurnEngine,
+  LearningAgentOrchestrator,
   LocalHybridRetriever,
   SocraticSafetyGate,
 } from "@openlearnos/core";
 import type {
+  AgentGoalWorkerPayload,
   MemorySnapshot,
   PreparedTurnResult,
+  QuizSubmitWorkerPayload,
   Stress150Result,
   WorkerRequest,
   WorkerResponse,
@@ -23,6 +26,7 @@ const turnEngine = new InMemoryTurnEngine();
 const memoryStore = new AuditableMemoryStore();
 const retriever = new LocalHybridRetriever();
 const safetyGate = new SocraticSafetyGate();
+const agentOrchestrator = new LearningAgentOrchestrator(memoryStore, retriever, safetyGate);
 
 const allChunks: DocumentChunk[] = [];
 const traceIndex: L1TraceRecord[] = [];
@@ -282,6 +286,46 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
           });
         }
         reply({ id: req.id, ok: true, payload: snapshotMemory() });
+        break;
+      }
+      case "RUN_AGENT_GOAL": {
+        const run = agentOrchestrator.executeGoal({
+          sessionId: req.sessionId,
+          mode: req.mode,
+          goal: req.goal,
+          guardianRevealUnlocked: req.guardianRevealUnlocked,
+        });
+        const payload: AgentGoalWorkerPayload = {
+          run,
+          memory: snapshotMemory(),
+        };
+        reply({ id: req.id, ok: true, payload });
+        break;
+      }
+      case "SUBMIT_QUIZ": {
+        const evaluation = agentOrchestrator.submitQuizAnswer({
+          sessionId: req.sessionId,
+          quizId: req.quizId,
+          selectedIndex: req.selectedIndex,
+        });
+        // Mirror newly created L1 trace & L2 concept into worker snapshot indices
+        const allDue = memoryStore.getDueConcepts(Number.MAX_SAFE_INTEGER);
+        for (const c of allDue) {
+          if (!conceptIds.has(c.conceptId)) {
+            conceptIds.add(c.conceptId);
+            for (const tid of c.sourceTraceIds) {
+              if (!traceIndex.some((t) => t.traceId === tid)) {
+                const prov = memoryStore.auditConceptProvenance(c.conceptId).find((t) => t.traceId === tid);
+                if (prov) traceIndex.unshift(prov);
+              }
+            }
+          }
+        }
+        const payload: QuizSubmitWorkerPayload = {
+          evaluation,
+          memory: snapshotMemory(),
+        };
+        reply({ id: req.id, ok: true, payload });
         break;
       }
     }
