@@ -1,12 +1,16 @@
-export type ChunkMediaType = "text" | "table" | "image" | "code";
+export type ChunkMediaType = "text" | "table" | "image" | "code" | "slide";
 export type DocumentSourceFormat =
   | "pdf"
   | "docx"
   | "xlsx"
+  | "pptx"
   | "csv"
   | "txt"
   | "md"
-  | "image";
+  | "image"
+  | "epub"
+  | "code"
+  | "transcript";
 
 export interface DocumentChunk {
   readonly chunkId: string;

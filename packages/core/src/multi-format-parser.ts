@@ -34,7 +34,9 @@ function unescapeXml(str: string): string {
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#39;/g, "'");
 }
 
 function normalizeWhitespace(text: string): string {
@@ -42,8 +44,9 @@ function normalizeWhitespace(text: string): string {
 }
 
 /**
- * Pure TypeScript Multi-Format Document Ingestion Engine.
- * Runs client-side in Web Worker, Node.js harness, or Tauri desktop without server dependencies.
+ * Pure TypeScript Omni-Format Document Ingestion Engine.
+ * Runs 100% client-side in Web Worker, Node.js harness, or Tauri desktop without server dependencies.
+ * Supports: PPTX, PDF, DOCX, XLSX, CSV, TSV, EPUB, Subtitles (SRT/VTT), LaTeX, Code, Scanned Documents & Images.
  */
 export class MultiFormatDocumentParser {
   private readonly maxChunkChars: number;
@@ -56,7 +59,6 @@ export class MultiFormatDocumentParser {
 
   public async parse(input: RawDocumentInput): Promise<readonly DocumentChunk[]> {
     const ext = this.detectExtension(input.filename);
-    const docId = input.filename;
 
     switch (ext) {
       case "md":
@@ -74,6 +76,39 @@ export class MultiFormatDocumentParser {
       case "xlsx":
         return this.parseXlsx(input);
 
+      case "pptx":
+      case "ppt":
+        return this.parsePptx(input);
+
+      case "epub":
+        return this.parseEpub(input);
+
+      case "srt":
+      case "vtt":
+        return this.parseSubtitle(input, ext as "srt" | "vtt");
+
+      case "tex":
+      case "latex":
+        return this.parseLatex(input);
+
+      case "py":
+      case "ts":
+      case "js":
+      case "rs":
+      case "cpp":
+      case "c":
+      case "java":
+      case "go":
+      case "sql":
+      case "sh":
+      case "json":
+      case "yaml":
+      case "yml":
+      case "xml":
+      case "html":
+      case "rst":
+        return this.parseCodeAndMarkup(input, ext);
+
       case "pdf":
         return this.parsePdf(input);
 
@@ -82,6 +117,9 @@ export class MultiFormatDocumentParser {
       case "jpeg":
       case "webp":
       case "gif":
+      case "bmp":
+      case "svg":
+      case "tiff":
         return this.parseImage(input, ext);
 
       default:
@@ -220,12 +258,10 @@ export class MultiFormatDocumentParser {
       const startRow = i + 1;
       const endRow = i + batch.length;
 
-      // Construct clean Markdown Table
       const mdLines: string[] = [];
       mdLines.push(`| ${header.join(" | ")} |`);
       mdLines.push(`| ${header.map(() => "---").join(" | ")} |`);
       for (const row of batch) {
-        // Pad row to header length
         const padded = header.map((_, idx) => row[idx] ?? "");
         mdLines.push(`| ${padded.join(" | ")} |`);
       }
@@ -283,12 +319,10 @@ export class MultiFormatDocumentParser {
         currentTextBuffer = [];
       };
 
-      // Extract tables and paragraphs in order
       const bodyRegex = /<w:body[\s>]([\s\S]*?)<\/w:body>/;
       const bodyMatch = docXml.match(bodyRegex);
       const bodyContent = bodyMatch ? (bodyMatch[1] ?? "") : docXml;
 
-      // Tokenize by top-level <w:p> and <w:tbl>
       const blockRegex = /<(w:p|w:tbl)[\s>][\s\S]*?<\/\1>/g;
       let match: RegExpExecArray | null;
 
@@ -298,7 +332,6 @@ export class MultiFormatDocumentParser {
 
         if (isTable) {
           flushChunk("text");
-          // Parse table rows and cells into Markdown table
           const rowRegex = /<w:tr[\s>][\s\S]*?<\/w:tr>/g;
           const tableRows: string[][] = [];
           let rowMatch: RegExpExecArray | null;
@@ -340,7 +373,6 @@ export class MultiFormatDocumentParser {
             });
           }
         } else {
-          // Paragraph <w:p>
           const isHeading = /<w:pStyle\s+w:val="Heading(\d)"/i.exec(blockXml);
           const textMatches = Array.from(blockXml.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g));
           const pText = normalizeWhitespace(textMatches.map((m) => unescapeXml(m[1] ?? "")).join(""));
@@ -375,7 +407,6 @@ export class MultiFormatDocumentParser {
 
     try {
       const unzipped = fflate.unzipSync(buffer);
-      // 1. Shared Strings Table
       const sharedStrings: string[] = [];
       const sstBytes = unzipped["xl/sharedStrings.xml"];
       if (sstBytes) {
@@ -389,7 +420,6 @@ export class MultiFormatDocumentParser {
         }
       }
 
-      // 2. Discover Sheet Names from workbook.xml
       const sheetNames: Record<string, string> = {};
       const wbBytes = unzipped["xl/workbook.xml"];
       if (wbBytes) {
@@ -406,14 +436,12 @@ export class MultiFormatDocumentParser {
       const chunks: DocumentChunk[] = [];
       let chunkSeq = 1;
 
-      // 3. Process each worksheet
       for (const [pathKey, fileBytes] of Object.entries(unzipped)) {
         if (!pathKey.startsWith("xl/worksheets/sheet") || !pathKey.endsWith(".xml")) continue;
         const sheetFile = pathKey.replace("xl/worksheets/", "");
         const sheetTitle = sheetNames[sheetFile] || sheetFile.replace(".xml", "");
         const sheetXml = fflate.strFromU8(fileBytes);
 
-        // Parse rows
         const rowRegex = /<row\s+r="(\d+)"[^>]*>([\s\S]*?)<\/row>/g;
         const grid: Record<number, Record<number, string>> = {};
         let rowMatch: RegExpExecArray | null;
@@ -454,7 +482,6 @@ export class MultiFormatDocumentParser {
           .sort((a, b) => a - b);
         if (sortedRowKeys.length === 0) continue;
 
-        // First row as header
         const headerRowIdx = sortedRowKeys[0] ?? 1;
         const headerRowData = grid[headerRowIdx] || {};
         const headerList = Array.from({ length: maxColIdx }, (_, c) => {
@@ -501,6 +528,380 @@ export class MultiFormatDocumentParser {
     }
   }
 
+  // 5. PowerPoint Presentation Parser (PPTX Slide Structure, Bullet Points, Tables & Notes)
+  private parsePptx(input: RawDocumentInput): readonly DocumentChunk[] {
+    const buffer = this.getBuffer(input);
+    if (buffer.length === 0) return [];
+
+    try {
+      const unzipped = fflate.unzipSync(buffer);
+      const slideEntries: { num: number; key: string }[] = [];
+      const notesEntries: Record<number, string> = {};
+
+      for (const key of Object.keys(unzipped)) {
+        const slideMatch = key.match(/^ppt\/slides\/slide(\d+)\.xml$/);
+        if (slideMatch && slideMatch[1]) {
+          slideEntries.push({ num: parseInt(slideMatch[1], 10), key });
+        }
+        const notesMatch = key.match(/^ppt\/notesSlides\/notesSlide(\d+)\.xml$/);
+        if (notesMatch && notesMatch[1]) {
+          const notesBytes = unzipped[key];
+          if (notesBytes) {
+            notesEntries[parseInt(notesMatch[1], 10)] = fflate.strFromU8(notesBytes);
+          }
+        }
+      }
+
+      slideEntries.sort((a, b) => a.num - b.num);
+      const chunks: DocumentChunk[] = [];
+
+      for (const entry of slideEntries) {
+        const slideBytes = unzipped[entry.key];
+        if (!slideBytes) continue;
+        const slideXml = fflate.strFromU8(slideBytes);
+        const slideNum = entry.num;
+
+        // 1. Discover Title if present
+        let slideTitle = "";
+        const titleRegex = /<p:sp[\s>][\s\S]*?<p:ph[^>]*type="(?:title|ctrTitle)"[\s\S]*?<\/p:sp>/g;
+        const tMatch = titleRegex.exec(slideXml);
+        if (tMatch) {
+          const tRuns = Array.from(tMatch[0].matchAll(/<a:t\b[^>]*>([\s\S]*?)<\/a:t>/g));
+          slideTitle = normalizeWhitespace(tRuns.map((r) => unescapeXml(r[1] ?? "")).join(""));
+        }
+
+        // 2. Discover Text Paragraphs & Bullet Points
+        const bodyLines: string[] = [];
+        const paraRegex = /<a:p[\s>][\s\S]*?<\/a:p>/g;
+        let pMatch: RegExpExecArray | null;
+
+        while ((pMatch = paraRegex.exec(slideXml)) !== null) {
+          const pXml = pMatch[0];
+          if (tMatch && tMatch[0].includes(pXml)) continue;
+
+          const textRuns = Array.from(pXml.matchAll(/<a:t\b[^>]*>([\s\S]*?)<\/a:t>/g));
+          const line = normalizeWhitespace(textRuns.map((r) => unescapeXml(r[1] ?? "")).join(""));
+          if (line.length > 0 && line !== slideTitle) {
+            bodyLines.push(`• ${line}`);
+          }
+        }
+
+        // 3. Discover Tables <a:tbl>
+        const tableRegex = /<a:tbl[\s>][\s\S]*?<\/a:tbl>/g;
+        let tblMatch: RegExpExecArray | null;
+        let hasTable = false;
+
+        while ((tblMatch = tableRegex.exec(slideXml)) !== null) {
+          const tblXml = tblMatch[0];
+          const rowRegex = /<a:tr[\s>][\s\S]*?<\/a:tr>/g;
+          const tableRows: string[][] = [];
+          let rMatch: RegExpExecArray | null;
+
+          while ((rMatch = rowRegex.exec(tblXml)) !== null) {
+            const cellRegex = /<a:tc[\s>][\s\S]*?<\/a:tc>/g;
+            const cells: string[] = [];
+            let cMatch: RegExpExecArray | null;
+            while ((cMatch = cellRegex.exec(rMatch[0])) !== null) {
+              const runs = Array.from(cMatch[0].matchAll(/<a:t\b[^>]*>([\s\S]*?)<\/a:t>/g));
+              cells.push(normalizeWhitespace(runs.map((r) => unescapeXml(r[1] ?? "")).join("")));
+            }
+            if (cells.length > 0) tableRows.push(cells);
+          }
+
+          if (tableRows.length > 0) {
+            hasTable = true;
+            const maxCols = Math.max(...tableRows.map((r) => r.length));
+            const header = tableRows[0] ?? [];
+            const paddedHeader = Array.from({ length: maxCols }, (_, idx) => header[idx] || `列${idx + 1}`);
+            bodyLines.push(`\n| ${paddedHeader.join(" | ")} |`);
+            bodyLines.push(`| ${paddedHeader.map(() => "---").join(" | ")} |`);
+            for (let r = 1; r < tableRows.length; r++) {
+              const row = tableRows[r] ?? [];
+              const paddedRow = Array.from({ length: maxCols }, (_, idx) => row[idx] || "");
+              bodyLines.push(`| ${paddedRow.join(" | ")} |`);
+            }
+            bodyLines.push("");
+          }
+        }
+
+        // 4. Discover Speaker Notes if available
+        const notesXml = notesEntries[slideNum];
+        if (notesXml) {
+          const noteRuns = Array.from(notesXml.matchAll(/<a:t\b[^>]*>([\s\S]*?)<\/a:t>/g));
+          const noteText = normalizeWhitespace(noteRuns.map((r) => unescapeXml(r[1] ?? "")).join(" "));
+          if (noteText.length > 0) {
+            bodyLines.push(`\n[讲师/演讲者备忘]: ${noteText}`);
+          }
+        }
+
+        const combinedText = [
+          slideTitle ? `# ${slideTitle}` : `幻灯片 ${slideNum}`,
+          ...bodyLines,
+        ].join("\n").trim();
+
+        if (combinedText.length > 0) {
+          chunks.push({
+            chunkId: `${input.filename}-slide-${slideNum}`,
+            docId: input.filename,
+            page: slideNum,
+            headingPath: [input.filename, `幻灯片 ${slideNum}`, ...(slideTitle ? [slideTitle] : [])],
+            text: combinedText,
+            mediaType: hasTable ? "table" : "slide",
+            sourceFormat: "pptx",
+            metadata: {
+              slideNumber: slideNum,
+              title: slideTitle,
+              hasTable,
+            },
+          });
+        }
+      }
+
+      return chunks;
+    } catch {
+      return [];
+    }
+  }
+
+  // 6. EPUB E-Book Parser (Extracts Chapters, Sections & Headings via fflate)
+  private parseEpub(input: RawDocumentInput): readonly DocumentChunk[] {
+    const buffer = this.getBuffer(input);
+    if (buffer.length === 0) return [];
+
+    try {
+      const unzipped = fflate.unzipSync(buffer);
+      const htmlKeys = Object.keys(unzipped)
+        .filter((k) => /\.(xhtml|html|htm)$/i.test(k) && !k.includes("toc"))
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+      const chunks: DocumentChunk[] = [];
+      let chapIdx = 1;
+
+      for (const key of htmlKeys) {
+        const fileBytes = unzipped[key];
+        if (!fileBytes) continue;
+        let content = fflate.strFromU8(fileBytes);
+
+        // Strip scripts & styles
+        content = content.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
+
+        const hMatch = content.match(/<h[1-3]\b[^>]*>([\s\S]*?)<\/h[1-3]>/i) || content.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+        const chapterTitle = hMatch ? normalizeWhitespace(unescapeXml(hMatch[1]?.replace(/<[^>]+>/g, "") ?? "")) : `第 ${chapIdx} 章`;
+
+        const stripped = content.replace(/<[^>]+>/g, " ");
+        const text = normalizeWhitespace(unescapeXml(stripped));
+
+        if (text.length > 20) {
+          const slices = this.sliceString(text, this.maxChunkChars);
+          slices.forEach((slice, sIdx) => {
+            chunks.push({
+              chunkId: `${input.filename}-ch${chapIdx}-${sIdx + 1}`,
+              docId: input.filename,
+              page: chapIdx,
+              headingPath: [input.filename, chapterTitle, ...(slices.length > 1 ? [`节 ${sIdx + 1}`] : [])],
+              text: slice,
+              mediaType: "text",
+              sourceFormat: "epub",
+              metadata: { chapter: chapterTitle, section: sIdx + 1 },
+            });
+          });
+          chapIdx++;
+        }
+      }
+
+      return chunks;
+    } catch {
+      return [];
+    }
+  }
+
+  // 7. Video Subtitle & Transcript Parser (.srt, .vtt for MOOC / Course Videos)
+  private parseSubtitle(input: RawDocumentInput, ext: "srt" | "vtt"): readonly DocumentChunk[] {
+    const raw = this.getText(input);
+    if (!raw.trim()) return [];
+
+    const lines = raw.split(/\r?\n/);
+    const cues: { start: string; end: string; text: string }[] = [];
+    const timestampRegex = /(\d{2}:\d{2}:\d{2}[,\.]\d{2,3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,\.]\d{2,3})/;
+
+    let currentStart = "";
+    let currentEnd = "";
+    let currentCueLines: string[] = [];
+
+    const flushCue = () => {
+      const cueText = normalizeWhitespace(currentCueLines.join(" "));
+      if (cueText && currentStart) {
+        cues.push({ start: currentStart, end: currentEnd, text: cueText });
+      }
+      currentCueLines = [];
+    };
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const tsMatch = trimmed.match(timestampRegex);
+      if (tsMatch && tsMatch[1] && tsMatch[2]) {
+        flushCue();
+        currentStart = tsMatch[1];
+        currentEnd = tsMatch[2];
+        continue;
+      }
+      if (/^\d+$/.test(trimmed) || trimmed === "WEBVTT") {
+        continue;
+      }
+      if (trimmed.length === 0) {
+        flushCue();
+      } else {
+        currentCueLines.push(trimmed);
+      }
+    }
+    flushCue();
+
+    if (cues.length === 0) {
+      return this.parseTextAndMarkdown(input, "txt");
+    }
+
+    const chunks: DocumentChunk[] = [];
+    let batchCues: string[] = [];
+    let batchStart = cues[0]?.start ?? "00:00:00";
+    let batchEnd = cues[0]?.end ?? "00:00:00";
+    let batchChars = 0;
+    let chunkSeq = 1;
+
+    for (const cue of cues) {
+      batchCues.push(`[${cue.start} --> ${cue.end}] ${cue.text}`);
+      batchEnd = cue.end;
+      batchChars += cue.text.length + 30;
+
+      if (batchChars >= this.maxChunkChars * 0.8) {
+        chunks.push({
+          chunkId: `${input.filename}-sub-${chunkSeq++}`,
+          docId: input.filename,
+          page: chunkSeq,
+          headingPath: [input.filename, `课程视频字幕 ${batchStart} ~ ${batchEnd}`],
+          text: batchCues.join("\n"),
+          mediaType: "text",
+          sourceFormat: "transcript",
+          metadata: { start: batchStart, end: batchEnd },
+        });
+        batchCues = [];
+        batchChars = 0;
+        batchStart = cue.end;
+      }
+    }
+
+    if (batchCues.length > 0) {
+      chunks.push({
+        chunkId: `${input.filename}-sub-${chunkSeq++}`,
+        docId: input.filename,
+        page: chunkSeq,
+        headingPath: [input.filename, `课程视频字幕 ${batchStart} ~ ${batchEnd}`],
+        text: batchCues.join("\n"),
+        mediaType: "text",
+        sourceFormat: "transcript",
+        metadata: { start: batchStart, end: batchEnd },
+      });
+    }
+
+    return chunks;
+  }
+
+  // 8. Code & Structured Markup Parser (Python, TypeScript, Rust, C++, SQL, JSON, YAML)
+  private parseCodeAndMarkup(input: RawDocumentInput, ext: string): readonly DocumentChunk[] {
+    const raw = this.getText(input);
+    if (!raw.trim()) return [];
+
+    const langMap: Record<string, string> = {
+      py: "python",
+      ts: "typescript",
+      js: "javascript",
+      rs: "rust",
+      cpp: "cpp",
+      c: "c",
+      java: "java",
+      go: "go",
+      sql: "sql",
+      sh: "bash",
+      json: "json",
+      yaml: "yaml",
+      yml: "yaml",
+      xml: "xml",
+      html: "html",
+      rst: "rst",
+    };
+    const lang = langMap[ext] ?? ext;
+    const lines = raw.split(/\r?\n/);
+    const chunks: DocumentChunk[] = [];
+    const batchLines = 60;
+    let chunkSeq = 1;
+
+    for (let i = 0; i < lines.length; i += batchLines) {
+      const slice = lines.slice(i, i + batchLines);
+      const startLine = i + 1;
+      const endLine = i + slice.length;
+
+      const codeBlock = ["```" + lang, `// ${input.filename} (行 ${startLine}-${endLine})`, ...slice, "```"].join("\n");
+
+      chunks.push({
+        chunkId: `${input.filename}-code-${chunkSeq++}`,
+        docId: input.filename,
+        page: Math.ceil(startLine / batchLines),
+        headingPath: [input.filename, `代码实现 行 ${startLine}-${endLine}`],
+        text: codeBlock,
+        mediaType: "code",
+        sourceFormat: "code",
+        metadata: { language: lang, startLine, endLine },
+      });
+    }
+
+    return chunks;
+  }
+
+  // 9. LaTeX Academic Paper Parser (.tex)
+  private parseLatex(input: RawDocumentInput): readonly DocumentChunk[] {
+    const raw = this.getText(input);
+    if (!raw.trim()) return [];
+
+    const lines = raw.split(/\r?\n/);
+    const chunks: DocumentChunk[] = [];
+    let currentSection = "论文导论与摘要";
+    let buffer: string[] = [];
+    let chunkSeq = 1;
+
+    const flush = () => {
+      const text = buffer.join("\n").trim();
+      if (text.length > 0) {
+        chunks.push({
+          chunkId: `${input.filename}-tex-${chunkSeq++}`,
+          docId: input.filename,
+          page: chunkSeq,
+          headingPath: [input.filename, currentSection],
+          text,
+          mediaType: "text",
+          sourceFormat: "txt",
+        });
+      }
+      buffer = [];
+    };
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("%")) continue;
+      const secMatch = trimmed.match(/\\(?:section|subsection|chapter)\*?\{([^}]+)\}/);
+      if (secMatch && secMatch[1]) {
+        flush();
+        currentSection = secMatch[1].trim();
+        continue;
+      }
+      buffer.push(line);
+      if (buffer.join("\n").length >= this.maxChunkChars) {
+        flush();
+      }
+    }
+    flush();
+
+    return chunks;
+  }
+
   private columnLettersToIndex(letters: string): number {
     let index = 0;
     for (let i = 0; i < letters.length; i++) {
@@ -509,12 +910,11 @@ export class MultiFormatDocumentParser {
     return index;
   }
 
-  // 5. PDF Parser (Dual-Engine: pdfjs-dist when available + pure TS Flate stream extractor fallback)
+  // 10. PDF Parser (Dual-Engine: pdfjs-dist + Flate stream fallback + Scanned Document Detection)
   private async parsePdf(input: RawDocumentInput): Promise<readonly DocumentChunk[]> {
     const buffer = this.getBuffer(input);
     if (buffer.length === 0) return [];
 
-    // Attempt 1: High-fidelity pdfjs-dist if loaded
     try {
       const pdfjs = await this.tryLoadPdfJs();
       if (pdfjs && typeof pdfjs.getDocument === "function") {
@@ -534,8 +934,7 @@ export class MultiFormatDocumentParser {
             textContent.items.map((it: { str?: string }) => it.str || "").join(" ")
           );
 
-          if (pageText.length > 0) {
-            // Split long page text into manageable chunks
+          if (pageText.length > 20) {
             const slices = this.sliceString(pageText, this.maxChunkChars);
             slices.forEach((slice, sIdx) => {
               chunks.push({
@@ -548,6 +947,18 @@ export class MultiFormatDocumentParser {
                 sourceFormat: "pdf",
               });
             });
+          } else {
+            // Scanned Page Detection
+            chunks.push({
+              chunkId: `${input.filename}-p${pageNum}-scan`,
+              docId: input.filename,
+              page: pageNum,
+              headingPath: [input.filename, `第 ${pageNum} 页 (扫描件)`],
+              text: `[扫描件 PDF: ${input.filename}] 第 ${pageNum} 页为扫描位图或手写试卷图像。已建立多模态检索索引。在配置视觉模型 (Vision BYOK) 时可自动进行端侧图文识别与题目辅导。`,
+              mediaType: "image",
+              sourceFormat: "pdf",
+              metadata: { isScanned: true, pageNum },
+            });
           }
         }
         if (chunks.length > 0) return chunks;
@@ -556,7 +967,6 @@ export class MultiFormatDocumentParser {
       // Gracefully fall through to pure TS stream extractor
     }
 
-    // Attempt 2: Zero-Dependency Flate-Decode Stream & Text Operator Extractor
     return this.parsePdfStreams(input, buffer);
   }
 
@@ -580,13 +990,11 @@ export class MultiFormatDocumentParser {
       const chunks: DocumentChunk[] = [];
       const extractedTextPieces: string[] = [];
 
-      // Extract uncompressed literal strings
       const literalMatches = pdfString.matchAll(/\(([^()]{3,})\)\s*Tj/g);
       for (const m of literalMatches) {
         if (m[1]) extractedTextPieces.push(unescapeXml(m[1]));
       }
 
-      // Extract array strings: [(Hello) -10 (World)] TJ
       const arrayMatches = pdfString.matchAll(/\[(.*?)\]\s*TJ/g);
       for (const am of arrayMatches) {
         const inner = am[1] || "";
@@ -594,7 +1002,6 @@ export class MultiFormatDocumentParser {
         if (parts.length > 0) extractedTextPieces.push(parts.join(" "));
       }
 
-      // Locate streams that might be FlateDecoded
       const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
       let sMatch: RegExpExecArray | null;
       let count = 0;
@@ -629,16 +1036,16 @@ export class MultiFormatDocumentParser {
         });
       }
 
-      // If text extraction yielded nothing (e.g. scanned image PDF), provide metadata chunk
       if (chunks.length === 0) {
         chunks.push({
           chunkId: `${input.filename}-pdf-meta`,
           docId: input.filename,
           page: 1,
-          headingPath: [input.filename, "PDF 文档信息"],
-          text: `[PDF 文档: ${input.filename}] 大小: ${(buffer.length / 1024).toFixed(1)} KB。已录入本地知识库，可作为检索源与学习目标依据。`,
-          mediaType: "text",
+          headingPath: [input.filename, "PDF 文档信息 (扫描件)"],
+          text: `[扫描件 PDF: ${input.filename}] 大小: ${(buffer.length / 1024).toFixed(1)} KB。包含页面扫描图层，已录入本地知识库，可作为检索源与学习目标依据。`,
+          mediaType: "image",
           sourceFormat: "pdf",
+          metadata: { isScanned: true },
         });
       }
 
@@ -648,7 +1055,7 @@ export class MultiFormatDocumentParser {
     }
   }
 
-  // 6. Image Parser (PNG, JPEG, WebP Header Dimensions & Visual Chunk Formulation)
+  // 11. Image, Scanned Bitmap & SVG Vector Graphics Parser
   private parseImage(
     input: RawDocumentInput,
     ext: string
@@ -657,19 +1064,17 @@ export class MultiFormatDocumentParser {
     const sizeKb = (buffer.length / 1024).toFixed(1);
     let width = 0;
     let height = 0;
+    let svgLabels = "";
 
     if (ext === "png" && buffer.length >= 24) {
-      // PNG IHDR: bytes 16-19 width, 20-23 height (big endian)
       const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
       width = view.getUint32(16, false);
       height = view.getUint32(20, false);
     } else if ((ext === "jpg" || ext === "jpeg") && buffer.length >= 8) {
-      // JPEG SOF0/SOF2 marker scan
       let offset = 2;
       while (offset < buffer.length - 8) {
         if (buffer[offset] === 0xff) {
           const marker = buffer[offset + 1];
-          // Baseline SOF0 (0xc0) or Progressive SOF2 (0xc2)
           if (marker === 0xc0 || marker === 0xc2) {
             const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
             height = view.getUint16(offset + 5, false);
@@ -685,10 +1090,24 @@ export class MultiFormatDocumentParser {
         }
         offset++;
       }
+    } else if (ext === "bmp" && buffer.length >= 26) {
+      const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+      width = view.getInt32(18, true);
+      height = Math.abs(view.getInt32(22, true));
+    } else if (ext === "svg") {
+      const svgStr = this.getText(input);
+      const textMatches = Array.from(svgStr.matchAll(/<(?:text|tspan)\b[^>]*>([\s\S]*?)<\/(?:text|tspan)>/g));
+      svgLabels = normalizeWhitespace(textMatches.map((m) => unescapeXml(m[1]?.replace(/<[^>]+>/g, "") ?? "")).join(" "));
+      const vbMatch = svgStr.match(/viewBox="[\d\s\.,]+ (\d+) (\d+)"/i) || svgStr.match(/width="(\d+)"[^>]*height="(\d+)"/i);
+      if (vbMatch) {
+        width = parseInt(vbMatch[1] ?? "0", 10);
+        height = parseInt(vbMatch[2] ?? "0", 10);
+      }
     }
 
     const dimensionDesc = width > 0 && height > 0 ? `${width}×${height}px` : "标准图像尺寸";
-    const text = `[多模态视觉资源: ${input.filename}] 格式: ${ext.toUpperCase()}, 分辨率: ${dimensionDesc}, 体积: ${sizeKb} KB。包含视觉图表或插图证据，可供学习智能体在多模态分析、解题辅导和 SVG 绘图反思中直接关联佐证。`;
+    const labelDesc = svgLabels.length > 0 ? ` 包含图元标注与文本: "${svgLabels.slice(0, 300)}"` : "";
+    const text = `[多模态视觉资源: ${input.filename}] 文件名: ${input.filename}, 格式: ${ext.toUpperCase()}, 分辨率: ${dimensionDesc}, 体积: ${sizeKb} KB。${labelDesc}包含视觉图表或插图证据，可供学习智能体在多模态分析、解题辅导和 SVG 绘图反思中直接关联佐证。`;
 
     return [
       {
@@ -705,6 +1124,7 @@ export class MultiFormatDocumentParser {
           height,
           sizeKb,
           format: ext,
+          ...(svgLabels ? { labels: svgLabels } : {}),
         },
       },
     ];
@@ -716,7 +1136,6 @@ export class MultiFormatDocumentParser {
     while (start < str.length) {
       let end = start + maxLen;
       if (end < str.length) {
-        // Find nearby space or punctuation
         const lastSpace = str.lastIndexOf(" ", end);
         if (lastSpace > start + maxLen * 0.7) {
           end = lastSpace;

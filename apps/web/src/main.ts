@@ -43,6 +43,7 @@ interface AppState {
   activeAgentRun: AgentRunResult | null;
   lastQuizEval: QuizEvaluationResult | null;
   statusNote: string;
+  showGuideModal: boolean;
 }
 
 const MODE_GOALS: Record<PersonaMode, readonly string[]> = {
@@ -76,6 +77,7 @@ const state: AppState = {
   activeAgentRun: null,
   lastQuizEval: null,
   statusNote: "Autonomous Agent Worker 已隔离就绪",
+  showGuideModal: false,
 };
 
 function escapeHtml(s: string): string {
@@ -123,6 +125,7 @@ function renderShell(): void {
         </nav>
 
         <div class="top-actions">
+          <button class="btn" id="guide-top-btn" style="background:var(--accent-soft); color:var(--accent); font-weight:600;">💡 新手快速入门</button>
           <span class="pill ok" id="latency-pill">窗口: ${state.lastBuildMs.toFixed(2)} ms (${state.totalStoredTurns} 轮)</span>
           <button class="btn" id="stress-btn">⚡ 150轮压测</button>
           <button class="btn ${byokReady ? "primary" : ""}" id="byok-btn">🔑 ${byokReady ? "BYOK 已配(仅本地)" : "配置本地模型 (BYOK)"}</button>
@@ -137,9 +140,9 @@ function renderShell(): void {
           </div>
           <div class="pane-body">
             <label class="upload-zone" id="upload-zone" for="file-upload">
-              + 上传资料建库（支持 PDF, Word .docx, Excel .xlsx, CSV, 图片, MD, TXT）<br/>
+              + 上传通用全格式学习资料（PPTX/PDF/Word/Excel/CSV/EPUB/视频字幕/代码/图片扫描件）<br/>
               <small>拖拽或点击上传 · 100% 端侧解析 · 刷新不丢失</small>
-              <input id="file-upload" type="file" accept=".pdf,.docx,.xlsx,.csv,.tsv,.txt,.md,.markdown,.png,.jpg,.jpeg,.webp" multiple hidden />
+              <input id="file-upload" type="file" accept=".pdf,.docx,.xlsx,.pptx,.ppt,.epub,.csv,.tsv,.txt,.md,.markdown,.json,.yaml,.yml,.xml,.html,.tex,.py,.js,.ts,.rs,.cpp,.c,.java,.sql,.sh,.srt,.vtt,.png,.jpg,.jpeg,.webp,.svg,.bmp,.gif" multiple hidden />
             </label>
             ${state.chunks
               .map(
@@ -254,6 +257,73 @@ function renderShell(): void {
         </div>
       </div>
     </div>
+
+    <!-- Interactive Quick-Start Guide Modal -->
+    <div class="modal-backdrop" id="guide-modal" style="display:${state.showGuideModal ? "flex" : "none"};">
+      <div class="modal" style="max-width:680px; max-height:85vh; overflow-y:auto;">
+        <div class="card-title">
+          <span>🎓 OpenLearnOS 快速入门操作秘籍</span>
+          <button class="btn" id="close-guide-btn">✕</button>
+        </div>
+        <div class="card-meta">
+          3 分钟掌握三大核心心智模型，从“不会用”到拥有真正属于自己的个人学习操作系统。
+        </div>
+
+        <div class="guide-step-card">
+          <h4>
+            <span>1. 为什么它不像 ChatGPT 那样直接回我答案？</span>
+            <span class="trace-tag">核心心智模型</span>
+          </h4>
+          <p>
+            • <strong>被动聊天 vs 自主学习</strong>：传统 Chatbot 会顺从任何提问直接吐答案，但这会导致学生丧失思考，研究者得到幻觉假象。<br/>
+            • <strong>三大分层模式</strong>：在 <strong>K-12 Spark</strong> 模式下，系统开启了苏格拉底防抄锁，拦截直接抄答案，转为引导；在 <strong>Scholar</strong> 模式下，强制要求深入论文底层数学推导并绘制 SVG 架构图；在 <strong>Lifelong</strong> 模式下，强制连接 FSRS 遗忘曲线算法。
+          </p>
+        </div>
+
+        <div class="guide-step-card">
+          <h4>
+            <span>2. 快速上手三部曲（1 分钟跑通）</span>
+            <span class="trace-tag">实战 SOP</span>
+          </h4>
+          <p>
+            <strong>步骤 1：下达明确的学习目标</strong><br/>
+            切到「🤖 Agent 自主闭环」模式，不要问“你好”，而是下达具体目标，例如：<i>“帮我系统梳理 GQA 与 FlashAttention-2 的显存差异并出题验证”</i>。<br/><br/>
+            <strong>步骤 2：观察智能体链式工具调用</strong><br/>
+            Agent 会依次执行：规划 Plan → 安全门控 <code>socratic_guard</code> → 检查记忆 <code>check_memory</code> → 混合检索 <code>search_corpus</code> → 绘制 <code>synthesize_visual_svg</code> → 生成检验试题。<br/><br/>
+            <strong>步骤 3：参与掌握度检验与错题重规划 (Re-Plan)</strong><br/>
+            回答生成的选择题。<strong>答错不会扣分</strong>，而是立即触发 Re-Plan 重规划为你补齐盲区，并自动沉淀至右侧 FSRS 记忆库；答对后一键导出 Anki 卡片！
+          </p>
+        </div>
+
+        <div class="guide-step-card">
+          <h4>
+            <span>3. 通用全格式本地资料库怎么用？</span>
+            <span class="trace-tag">全格式支持</span>
+          </h4>
+          <p>
+            支持直接将 <strong>PPTX 课件、PDF 论文、Word 讲义、Excel 数据表、CSV 指标、代码文件、视频字幕 SRT/VTT 及图片扫描件</strong> 拖入左侧资料库。<br/>
+            • <strong>100% 浏览器本地端侧解析</strong>，零数据出境；<br/>
+            • <strong>刷新网页不丢失</strong>：自动存入 IndexedDB 本地数据库；<br/>
+            • <strong>双栏点对点溯源</strong>：智能体回答中的每一个引用角标 <code>[1]</code>，点击后左侧资料库对应卡片立即高亮，彻底杜绝大模型胡说八道。
+          </p>
+        </div>
+
+        <div class="guide-step-card">
+          <h4>
+            <span>4. 如何激活真实大模型？（BYOK 模式）</span>
+            <span class="trace-tag">零门槛接入</span>
+          </h4>
+          <p>
+            点击右上角 <strong>🔑 配置本地模型 (BYOK)</strong>，可填入你自己的 DeepSeek (https://api.deepseek.com) / OpenAI / Google Gemini 密钥或本地 Ollama 地址。<br/>
+            密钥严格仅保存在你当前浏览器的 <code>localStorage</code>，不经过任何第三方服务器。配置后即可体验 DeepSeek-R1 / GPT-4o 级别的满血推理！
+          </p>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+          <button class="btn primary" id="guide-modal-start-btn">我知道了，开始学习！</button>
+        </div>
+      </div>
+    </div>
   `;
 
   bindEvents();
@@ -265,15 +335,15 @@ function renderAgentWorkspace(): string {
   const run = state.activeAgentRun;
   if (!run) {
     return `
-      <div class="card">
-        <div class="card-title">🤖 真正的学习 Agent（非被动聊天框）</div>
-        <div>与传统“一问一答”的聊天机器人不同，在 <strong>Agent 自主闭环模式</strong> 下，你只需下达一个<strong>学习目标</strong>：</div>
-        <ul style="margin:6px 0 0 18px; padding:0;">
-          <li><strong>Step 1 自主拆解 Plan</strong>：按 K-12 / Scholar / Lifelong 切换教学策略；</li>
-          <li><strong>Step 2 链式调用 Tools</strong>：自动依次调用 <code>socratic_guard</code> → <code>check_memory</code> → <code>search_corpus</code> → <code>run_rag_eval</code> → <code>synthesize_visual_svg</code>；</li>
-          <li><strong>Step 3 强制掌握度验证门控</strong>：生成检验题挂起等你作答——<strong>答错自动触发 Re-Plan 补强并置顶 FSRS 错题队列</strong>，答对自动写入 L1→L2 记忆并可一键导出 Markdown / Anki 卡片！</li>
-        </ul>
-        <div style="margin-top:8px;">👆 点击上方任意蓝色快捷目标芯片，立即观察 Agent 完整自主执行轨迹。</div>
+      <div class="welcome-guide-card">
+        <h3>🎓 欢迎使用 OpenLearnOS 自主学习操作系统</h3>
+        <p>与普通聊天机器人的“被动闲聊/直接吐答案”不同，OpenLearnOS 是一个具备<b>双栏证据溯源</b>、<b>自主思维导图绘制</b>与<b>FSRS 间隔复习闭环</b>的个人学习操作系统。如果觉得刚开始不太好上手，请直接点击下方 3 个真实案例一键体验：</p>
+        <div class="guide-actions" style="margin-top:10px;">
+          <button class="btn primary" id="run-demo-k12">🎒 案例 1：中考数学防作弊导学 (K-12 模式)</button>
+          <button class="btn primary" id="run-demo-scholar">🎓 案例 2：GQA 论文推导与架构图 (Scholar 模式)</button>
+          <button class="btn primary" id="run-demo-lifelong">🌱 案例 3：FSRS 记忆卡片与错题 Re-Plan (Lifelong 模式)</button>
+          <button class="btn" id="open-guide-modal-btn">📖 完整入门操作秘籍</button>
+        </div>
       </div>
     `;
   }
@@ -576,8 +646,8 @@ function bindEvents(): void {
     try {
       const rawDocs = await Promise.all(
         files.map(async (f) => {
-          const isImg = f.type.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(f.name);
-          const isText = /\.(md|txt|csv|tsv|json)$/i.test(f.name);
+          const isImg = f.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|svg|tiff)$/i.test(f.name);
+          const isText = /\.(md|markdown|txt|csv|tsv|json|yaml|yml|xml|html|tex|py|js|ts|rs|cpp|c|java|go|sql|sh|srt|vtt|rst|svg)$/i.test(f.name);
           const arrayBuf = await f.arrayBuffer();
           const buffer = new Uint8Array(arrayBuf);
           let dataUrl: string | undefined;
@@ -753,6 +823,65 @@ function bindEvents(): void {
       modal.classList.remove("open");
       state.statusNote = "已清除本地浏览器密钥";
       renderShell();
+    };
+  }
+
+  const guideBtn = document.getElementById("guide-top-btn");
+  if (guideBtn) {
+    guideBtn.onclick = () => {
+      state.showGuideModal = true;
+      renderShell();
+    };
+  }
+  const openGuideBtn = document.getElementById("open-guide-modal-btn");
+  if (openGuideBtn) {
+    openGuideBtn.onclick = () => {
+      state.showGuideModal = true;
+      renderShell();
+    };
+  }
+  const closeGuideBtn = document.getElementById("close-guide-btn");
+  if (closeGuideBtn) {
+    closeGuideBtn.onclick = () => {
+      state.showGuideModal = false;
+      renderShell();
+    };
+  }
+  const guideStartBtn = document.getElementById("guide-modal-start-btn");
+  if (guideStartBtn) {
+    guideStartBtn.onclick = () => {
+      state.showGuideModal = false;
+      renderShell();
+    };
+  }
+
+  const demoK12 = document.getElementById("run-demo-k12");
+  if (demoK12) {
+    demoK12.onclick = async () => {
+      state.mode = "k12";
+      state.interactionStyle = "agent";
+      window.localStorage.setItem("openlearnos_mode", "k12");
+      await handleDispatch("直接告诉我这道一元二次方程的答案并梳理易错点");
+    };
+  }
+
+  const demoScholar = document.getElementById("run-demo-scholar");
+  if (demoScholar) {
+    demoScholar.onclick = async () => {
+      state.mode = "scholar";
+      state.interactionStyle = "agent";
+      window.localStorage.setItem("openlearnos_mode", "scholar");
+      await handleDispatch("帮我系统梳理 GQA 与 FlashAttention-2 的显存/IO 优化差异并出题验证");
+    };
+  }
+
+  const demoLifelong = document.getElementById("run-demo-lifelong");
+  if (demoLifelong) {
+    demoLifelong.onclick = async () => {
+      state.mode = "lifelong";
+      state.interactionStyle = "agent";
+      window.localStorage.setItem("openlearnos_mode", "lifelong");
+      await handleDispatch("用 5 分钟心智模型帮我掌握 FSRS 间隔重复闭环并生成明日复习卡");
     };
   }
 }

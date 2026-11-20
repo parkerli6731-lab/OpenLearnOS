@@ -355,7 +355,52 @@ trailer <</Root 1 0 R>>
   assert.ok(Boolean(imgChunks[0]?.dataUrl));
   allParsedChunks.push(...imgChunks);
 
-  // 7. Cross-Validation: Ingest all multi-format chunks into LocalHybridRetriever
+  // 7. PowerPoint Presentation (PPTX) Ingestion
+  const pptxSlideXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:sp><p:nvSpPr><p:ph type="title"/></p:nvSpPr><p:txBody><a:p><a:r><a:t>强化学习课件: Policy Gradient 策略梯度定理</a:t></a:r></a:p></p:txBody></p:sp>
+      <p:sp><p:txBody><a:p><a:r><a:t>通过蒙特卡洛采样估计回报梯度，避免价值函数近似误差。</a:t></a:r></a:p></p:txBody></p:sp>
+    </p:spTree>
+  </p:cSld>
+</p:sld>`;
+  const pptxBuffer = fflate.zipSync({ "ppt/slides/slide1.xml": fflate.strToU8(pptxSlideXml) });
+  const pptxChunks = await parser.parse({ filename: "reinforcement_learning_lecture.pptx", buffer: pptxBuffer });
+  assert.equal(pptxChunks.length, 1);
+  assert.equal(pptxChunks[0]?.sourceFormat, "pptx");
+  assert.ok(pptxChunks[0]?.text.includes("Policy Gradient"));
+  allParsedChunks.push(...pptxChunks);
+
+  // 8. MOOC Video Subtitle / Transcript (.srt) Ingestion
+  const srtChunks = await parser.parse({
+    filename: "distributed_rl_lecture.srt",
+    textContent: `1\n00:00:01,000 --> 00:00:05,000\n同学们好，今天我们讲解分布式强化学习框架 Ray RLlib 的架构。\n\n2\n00:00:05,500 --> 00:00:10,000\nActor 模型能够跨节点并发收集环境转移轨迹 (Trajectory)。`,
+  });
+  assert.ok(srtChunks.length >= 1);
+  assert.equal(srtChunks[0]?.sourceFormat, "transcript");
+  assert.ok(srtChunks[0]?.text.includes("Ray RLlib"));
+  allParsedChunks.push(...srtChunks);
+
+  // 9. Python Code (.py) Ingestion
+  const codeChunks = await parser.parse({
+    filename: "ppo_clip_loss.py",
+    textContent: `def ppo_clip_loss(logp, old_logp, advantages, clip_eps=0.2):\n    ratio = torch.exp(logp - old_logp)\n    surr1 = ratio * advantages\n    surr2 = torch.clamp(ratio, 1.0 - clip_eps, 1.0 + clip_eps) * advantages\n    return -torch.min(surr1, surr2).mean()`,
+  });
+  assert.ok(codeChunks.length >= 1);
+  assert.equal(codeChunks[0]?.sourceFormat, "code");
+  assert.ok(codeChunks[0]?.text.includes("def ppo_clip_loss"));
+  allParsedChunks.push(...codeChunks);
+
+  // 10. Vector SVG Diagram (.svg) Ingestion
+  const svgXml = `<svg viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg"><text x="100" y="100">Actor-Critic 架构网络拓扑</text></svg>`;
+  const svgChunks = await parser.parse({ filename: "actor_critic_architecture.svg", textContent: svgXml });
+  assert.equal(svgChunks.length, 1);
+  assert.equal(svgChunks[0]?.sourceFormat, "image");
+  assert.ok(svgChunks[0]?.text.includes("Actor-Critic 架构网络拓扑"));
+  allParsedChunks.push(...svgChunks);
+
+  // 11. Cross-Validation: Ingest all multi-format chunks into LocalHybridRetriever
   const retriever = new LocalHybridRetriever();
   retriever.indexChunks(allParsedChunks);
 
@@ -367,6 +412,10 @@ trailer <</Root 1 0 R>>
       { query: "收敛步数 算法名称 1500 450", goldDocIds: ["rl_convergence_study.xlsx"] },
       { query: "PPO clipped surrogate objective policy", goldDocIds: ["ppo_objective.pdf"] },
       { query: "reinforcement_learning_loss_curve 视觉图表 1024x768", goldDocIds: ["reinforcement_learning_loss_curve.png"] },
+      { query: "Policy Gradient 策略梯度定理 课件 幻灯片", goldDocIds: ["reinforcement_learning_lecture.pptx"] },
+      { query: "分布式强化学习 Ray RLlib 课程字幕 录播", goldDocIds: ["distributed_rl_lecture.srt"] },
+      { query: "def ppo_clip_loss surrogate 代码实现", goldDocIds: ["ppo_clip_loss.py"] },
+      { query: "Actor-Critic 架构网络拓扑 矢量图 标注", goldDocIds: ["actor_critic_architecture.svg"] },
     ],
     2
   );
@@ -374,7 +423,7 @@ trailer <</Root 1 0 R>>
   assert.ok(evalReport.recallAtK >= 0.95, `Multi-format Recall@2 below threshold: ${evalReport.recallAtK}`);
   assert.ok(evalReport.mrr >= 0.95, `Multi-format MRR below threshold: ${evalReport.mrr}`);
   console.log(
-    `[PASS] Universal Multi-Format RAG Harness: PDF, Word, Excel, CSV, Image & Markdown recall=${evalReport.recallAtK}, MRR=${evalReport.mrr}`
+    `[PASS] Universal Omni-Format RAG Harness: PPTX, PDF, Word, Excel, CSV, SRT, Code, SVG & Markdown recall=${evalReport.recallAtK}, MRR=${evalReport.mrr}`
   );
 }
 
