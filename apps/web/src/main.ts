@@ -136,23 +136,31 @@ function renderShell(): void {
             <span>📚 双栏溯源资料库 (${state.chunks.length} 段)</span>
           </div>
           <div class="pane-body">
-            <label class="upload-zone" for="file-upload">
-              + 上传本地 .md / .txt 资料建库（自动持久化至 IndexedDB）<br/>
-              <small>刷新浏览器不丢失 · 100% 端侧解析零上传</small>
-              <input id="file-upload" type="file" accept=".md,.txt,.csv,.json" multiple hidden />
+            <label class="upload-zone" id="upload-zone" for="file-upload">
+              + 上传资料建库（支持 PDF, Word .docx, Excel .xlsx, CSV, 图片, MD, TXT）<br/>
+              <small>拖拽或点击上传 · 100% 端侧解析 · 刷新不丢失</small>
+              <input id="file-upload" type="file" accept=".pdf,.docx,.xlsx,.csv,.tsv,.txt,.md,.markdown,.png,.jpg,.jpeg,.webp" multiple hidden />
             </label>
             ${state.chunks
               .map(
-                (c) => `
+                (c) => {
+                  const fmt = c.sourceFormat || (c.mediaType === "image" ? "image" : c.docId.split(".").pop()?.toLowerCase() || "txt");
+                  const fmtClass = `format-${fmt === "jpeg" ? "image" : fmt === "jpg" ? "image" : fmt === "png" ? "image" : fmt}`;
+                  return `
               <article class="card ${state.highlightedChunkId === c.chunkId ? "highlight" : ""}">
                 <div class="card-title">
-                  <span>${escapeHtml(c.docId)}</span>
+                  <div style="display:flex; align-items:center; gap:6px; overflow:hidden;">
+                    <span class="format-badge ${fmtClass}">${escapeHtml(fmt.toUpperCase())}</span>
+                    <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(c.docId)}</span>
+                  </div>
                   <span class="trace-tag">P.${c.page}</span>
                 </div>
                 <div class="card-meta">${escapeHtml(c.headingPath.join(" › "))}</div>
-                <div>${escapeHtml(c.text)}</div>
+                ${c.mediaType === "image" && c.dataUrl ? `<img src="${c.dataUrl}" alt="${escapeHtml(c.docId)}" class="chunk-img-preview" />` : ""}
+                ${c.mediaType === "table" ? `<div class="chunk-table-container"><pre style="margin:0;">${escapeHtml(c.text)}</pre></div>` : `<div>${escapeHtml(c.text)}</div>`}
               </article>
-            `
+            `;
+                }
               )
               .join("")}
           </div>
@@ -551,37 +559,85 @@ function bindEvents(): void {
     };
   }
 
+  function readFileAsDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleFilesSelected(files: File[]) {
+    if (files.length === 0) return;
+    state.statusNote = `正在端侧解析 ${files.length} 个多格式文件...`;
+    renderShell();
+
+    try {
+      const rawDocs = await Promise.all(
+        files.map(async (f) => {
+          const isImg = f.type.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(f.name);
+          const isText = /\.(md|txt|csv|tsv|json)$/i.test(f.name);
+          const arrayBuf = await f.arrayBuffer();
+          const buffer = new Uint8Array(arrayBuf);
+          let dataUrl: string | undefined;
+          let textContent: string | undefined;
+
+          if (isImg) {
+            dataUrl = await readFileAsDataUrl(f);
+          }
+          if (isText) {
+            textContent = await f.text();
+          }
+
+          return {
+            filename: f.name,
+            buffer,
+            ...(textContent ? { textContent } : {}),
+            ...(dataUrl ? { dataUrl } : {}),
+            mimeType: f.type,
+          };
+        })
+      );
+
+      const res = await coreClient.ingestRawDocuments(rawDocs);
+      if (res.newChunks.length > 0) {
+        state.uploadedChunks.push(...res.newChunks);
+        await saveUploadedChunks(state.uploadedChunks);
+        state.chunks = res.chunks;
+        state.statusNote = `已端侧建库 (${files.length} 个文件，新增 ${res.newChunks.length} 段并存入 IndexedDB)`;
+      } else {
+        state.statusNote = `文件解析完成，未提取到有效文本段落`;
+      }
+    } catch (err) {
+      state.statusNote = `解析失败: ${err instanceof Error ? err.message : String(err)}`;
+    }
+    renderShell();
+  }
+
+  const uploadZone = document.getElementById("upload-zone");
+  if (uploadZone) {
+    uploadZone.ondragover = (e) => {
+      e.preventDefault();
+      uploadZone.classList.add("dragover");
+    };
+    uploadZone.ondragleave = () => {
+      uploadZone.classList.remove("dragover");
+    };
+    uploadZone.ondrop = async (e) => {
+      e.preventDefault();
+      uploadZone.classList.remove("dragover");
+      const droppedFiles = Array.from(e.dataTransfer?.files ?? []);
+      await handleFilesSelected(droppedFiles);
+    };
+  }
+
   const fileInput = document.getElementById("file-upload") as HTMLInputElement | null;
   if (fileInput) {
     fileInput.onchange = async () => {
       const files = Array.from(fileInput.files ?? []);
-      if (files.length === 0) return;
-      const newChunks: DocumentChunk[] = [];
-      for (const f of files) {
-        const text = await f.text();
-        const paragraphs = text
-          .split(/\n{2,}/)
-          .map((p) => p.trim())
-          .filter((p) => p.length > 10)
-          .slice(0, 20);
-        paragraphs.forEach((p, idx) => {
-          newChunks.push({
-            chunkId: `local-${f.name}-${idx}-${Date.now()}`,
-            docId: f.name,
-            page: idx + 1,
-            headingPath: ["本地持久化资料", f.name],
-            text: p.slice(0, 800),
-          });
-        });
-      }
-      if (newChunks.length > 0) {
-        state.uploadedChunks.push(...newChunks);
-        await saveUploadedChunks(state.uploadedChunks);
-        const res = await coreClient.addDocChunks(newChunks);
-        state.chunks = res.chunks;
-        state.statusNote = `已本地建库并写入 IndexedDB (+${newChunks.length} 段)`;
-        renderShell();
-      }
+      await handleFilesSelected(files);
+      fileInput.value = "";
     };
   }
 

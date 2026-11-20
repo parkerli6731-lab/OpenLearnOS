@@ -1,3 +1,13 @@
+export type ChunkMediaType = "text" | "table" | "image" | "code";
+export type DocumentSourceFormat =
+  | "pdf"
+  | "docx"
+  | "xlsx"
+  | "csv"
+  | "txt"
+  | "md"
+  | "image";
+
 export interface DocumentChunk {
   readonly chunkId: string;
   readonly docId: string;
@@ -5,6 +15,10 @@ export interface DocumentChunk {
   readonly headingPath: readonly string[];
   readonly text: string;
   readonly embedding?: readonly number[];
+  readonly mediaType?: ChunkMediaType;
+  readonly sourceFormat?: DocumentSourceFormat;
+  readonly dataUrl?: string;
+  readonly metadata?: Readonly<Record<string, unknown>>;
 }
 
 export interface RetrievalHit {

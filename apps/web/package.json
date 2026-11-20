@@ -6,7 +6,8 @@
   "dependencies": {
     "@openlearnos/contracts": "0.1.0",
     "@openlearnos/core": "0.1.0",
-    "@openlearnos/ui": "0.1.0"
+    "@openlearnos/ui": "0.1.0",
+    "pdfjs-dist": "^6.5.438"
   },
   "devDependencies": {
     "vite": "^6.3.0"
