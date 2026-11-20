@@ -427,11 +427,15 @@ body {
 
 .format-pdf { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
 .format-docx { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+.format-pptx, .format-ppt { background: rgba(249, 115, 22, 0.15); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.3); }
 .format-xlsx { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
-.format-csv { background: rgba(20, 184, 166, 0.15); color: #2dd4bf; border: 1px solid rgba(20, 184, 166, 0.3); }
+.format-csv, .format-tsv { background: rgba(20, 184, 166, 0.15); color: #2dd4bf; border: 1px solid rgba(20, 184, 166, 0.3); }
+.format-epub { background: rgba(5, 150, 105, 0.15); color: #10b981; border: 1px solid rgba(5, 150, 105, 0.3); }
+.format-transcript, .format-srt, .format-vtt { background: rgba(139, 92, 246, 0.15); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.3); }
+.format-code, .format-py, .format-ts, .format-js, .format-rs, .format-cpp, .format-sql { background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3); }
 .format-image { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
 .format-md { background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); }
-.format-txt { background: rgba(156, 163, 175, 0.15); color: #9ca3af; border: 1px solid rgba(156, 163, 175, 0.3); }
+.format-txt, .format-tex { background: rgba(156, 163, 175, 0.15); color: #9ca3af; border: 1px solid rgba(156, 163, 175, 0.3); }
 
 .chunk-img-preview {
   max-width: 100%;
@@ -453,4 +457,58 @@ body {
   margin-top: 6px;
   border: 1px solid var(--border);
   font-family: ui-monospace, Menlo, monospace;
+}
+
+.welcome-guide-card {
+  margin: 12px 14px;
+  padding: 16px 18px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 12px;
+}
+
+.welcome-guide-card h3 {
+  margin: 0 0 6px 0;
+  font-size: 0.98rem;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.welcome-guide-card p {
+  margin: 0 0 12px 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.guide-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.guide-step-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.guide-step-card h4 {
+  margin: 0 0 6px 0;
+  font-size: 0.88rem;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.guide-step-card p {
+  margin: 0 0 8px 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.45;
 }
