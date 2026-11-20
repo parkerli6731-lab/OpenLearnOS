@@ -44,3 +44,32 @@ export async function loadUploadedChunks(): Promise<readonly DocumentChunk[]> {
     return [];
   }
 }
+
+const DELETED_DOCS_KEY = "openlearnos_deleted_docs_v1";
+
+export function loadDeletedDocIds(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(DELETED_DOCS_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? (arr as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function saveDeletedDocIds(ids: ReadonlySet<string>): void {
+  try {
+    window.localStorage.setItem(DELETED_DOCS_KEY, JSON.stringify(Array.from(ids)));
+  } catch {
+    // Graceful no-op in restricted private browsing modes
+  }
+}
+
+export function clearDeletedDocIds(): void {
+  try {
+    window.localStorage.removeItem(DELETED_DOCS_KEY);
+  } catch {
+    // Graceful no-op
+  }
+}

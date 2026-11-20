@@ -33,6 +33,8 @@ export type WorkerRequestPayload =
   | { type: "ADD_DOC_CHUNKS"; chunks: readonly DocumentChunk[] }
   | { type: "RESET_ALL_CHUNKS"; chunks: readonly DocumentChunk[] }
   | { type: "DELETE_DOCUMENT"; docId: string }
+  | { type: "DELETE_CHUNK"; chunkId: string }
+  | { type: "CLEAR_ALL_DOCUMENTS" }
   | { type: "INGEST_RAW_DOCUMENTS"; documents: readonly RawDocumentUploadPayload[] }
   | {
       type: "PREPARE_TURN";

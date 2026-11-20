@@ -872,8 +872,81 @@ body {
   border-color: var(--danger);
 }
 
+.card-act-btn.danger-soft {
+  color: var(--muted);
+  border-color: var(--border);
+}
+
+.card-act-btn.danger-soft:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: rgba(239, 68, 68, 0.08);
+}
+
 .btn-xs {
   padding: 2px 7px;
   font-size: 0.7rem;
   border-radius: 4px;
+}
+
+/* Document Manager Modal Styles */
+.doc-mgr-toolbar {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0 8px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.doc-mgr-list {
+  max-height: 380px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  background: var(--bg);
+}
+
+.doc-mgr-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  gap: 10px;
+}
+
+.doc-mgr-info {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.doc-mgr-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+}
+
+.doc-mgr-detail {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.doc-mgr-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
 }

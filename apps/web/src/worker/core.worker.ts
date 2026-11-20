@@ -179,6 +179,20 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         reply({ id: req.id, ok: true, payload: { totalChunks: allChunks.length, chunks: [...allChunks] } });
         break;
       }
+      case "DELETE_CHUNK": {
+        const filtered = allChunks.filter((c) => c.chunkId !== req.chunkId);
+        allChunks.length = 0;
+        allChunks.push(...filtered);
+        retriever.indexChunks(allChunks);
+        reply({ id: req.id, ok: true, payload: { totalChunks: allChunks.length, chunks: [...allChunks] } });
+        break;
+      }
+      case "CLEAR_ALL_DOCUMENTS": {
+        allChunks.length = 0;
+        retriever.indexChunks(allChunks);
+        reply({ id: req.id, ok: true, payload: { totalChunks: 0, chunks: [] } });
+        break;
+      }
       case "INGEST_RAW_DOCUMENTS": {
         const newChunks: DocumentChunk[] = [];
         for (const doc of req.documents) {
