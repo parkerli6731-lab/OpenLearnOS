@@ -79,6 +79,14 @@ export class CoreWorkerClient {
     return this.call({ type: "DELETE_DOCUMENT", docId });
   }
 
+  deleteChunk(chunkId: string): Promise<{ totalChunks: number; chunks: readonly DocumentChunk[] }> {
+    return this.call({ type: "DELETE_CHUNK", chunkId });
+  }
+
+  clearAllDocuments(): Promise<{ totalChunks: number; chunks: readonly DocumentChunk[] }> {
+    return this.call({ type: "CLEAR_ALL_DOCUMENTS" });
+  }
+
   prepareTurn(
     sessionId: string,
     mode: PersonaMode,

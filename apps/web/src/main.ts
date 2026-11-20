@@ -17,7 +17,13 @@ import {
   loadLocalByok,
   saveLocalByok,
 } from "./ui/byok-client.ts";
-import { loadUploadedChunks, saveUploadedChunks } from "./ui/local-db.ts";
+import {
+  clearDeletedDocIds,
+  loadDeletedDocIds,
+  loadUploadedChunks,
+  saveDeletedDocIds,
+  saveUploadedChunks,
+} from "./ui/local-db.ts";
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -38,6 +44,7 @@ interface AppState {
   selectedDocFilter: string | null;
   libraryCategory: "all" | "uploaded" | "seed";
   hideSeedChunks: boolean;
+  showDocManagerModal: boolean;
   visibleTurns: readonly TurnRecord[];
   totalStoredTurns: number;
   lastBuildMs: number;
@@ -75,6 +82,7 @@ const state: AppState = {
   selectedDocFilter: null,
   libraryCategory: "all",
   hideSeedChunks: window.localStorage.getItem("openlearnos_hide_seeds") === "1",
+  showDocManagerModal: false,
   visibleTurns: [],
   totalStoredTurns: 0,
   lastBuildMs: 0,
@@ -175,11 +183,14 @@ function renderShell(): void {
         <section class="pane">
           <div class="pane-header">
             <span style="font-size:0.86rem;">📚 溯源知识库 (${displayChunks.length} 段)</span>
-            ${state.uploadedChunks.length > 0 ? `
-              <button class="btn btn-xs" id="toggle-seeds-btn" title="切换是否展示官方演示文档">
-                ${state.hideSeedChunks ? "👁️ 显示演示库" : "📦 隐藏演示库"}
-              </button>
-            ` : ""}
+            <div style="display:flex; gap:4px; align-items:center;">
+              <button class="btn btn-xs" id="open-doc-mgr-btn" style="background:var(--accent-soft); color:var(--accent); font-weight:600;" title="打开教材与素材管理中心">⚙️ 管理素材</button>
+              ${state.uploadedChunks.length > 0 ? `
+                <button class="btn btn-xs" id="toggle-seeds-btn" title="切换是否展示官方演示文档">
+                  ${state.hideSeedChunks ? "👁️ 显例" : "📦 隐例"}
+                </button>
+              ` : ""}
+            </div>
           </div>
           <div class="pane-body">
             <label class="upload-zone" id="upload-zone" for="file-upload">
@@ -231,7 +242,6 @@ function renderShell(): void {
             ` : displayChunks.map((c) => {
               const fmt = c.sourceFormat || (c.mediaType === "image" ? "image" : c.docId.split(".").pop()?.toLowerCase() || "txt");
               const fmtClass = `format-${fmt === "jpeg" ? "image" : fmt === "jpg" ? "image" : fmt === "png" ? "image" : fmt}`;
-              const isUp = uploadedChunkIds.has(c.chunkId);
               const isSelected = state.highlightedChunkId === c.chunkId;
               return `
                 <article class="card chunk-card ${isSelected ? "highlight" : ""}" id="chunk-${escapeHtml(c.chunkId)}" data-chunk-card="${escapeHtml(c.chunkId)}">
@@ -249,7 +259,8 @@ function renderShell(): void {
                   <div class="card-actions-bar">
                     <button class="card-act-btn primary" data-act-ask="${escapeHtml(c.chunkId)}" title="以此卡片内容为背景立即提问">🎯 针对此卡片提问</button>
                     <button class="card-act-btn" data-act-scope="${escapeHtml(c.docId)}" title="锁定仅检索此文档">📌 仅限此文档</button>
-                    ${isUp ? `<button class="card-act-btn danger" data-act-del="${escapeHtml(c.docId)}" title="从本地资料库中彻底移除此文档">🗑️ 移除</button>` : ""}
+                    <button class="card-act-btn danger" data-act-del-doc="${escapeHtml(c.docId)}" title="彻底删除此教材所有页面">🗑️ 删整篇</button>
+                    <button class="card-act-btn danger-soft" data-act-del-chunk="${escapeHtml(c.chunkId)}" title="仅从知识库删除此单一片段">✕ 删本页</button>
                   </div>
                 </article>
               `;
@@ -409,6 +420,57 @@ function renderShell(): void {
 
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
           <button class="btn primary" id="guide-modal-start-btn">我知道了，开始学习！</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Document Manager Modal: 素材与教材管理中心 -->
+    <div class="modal-backdrop" id="doc-manager-modal" style="display:${state.showDocManagerModal ? "flex" : "none"};">
+      <div class="modal" style="max-width:680px; max-height:85vh; overflow-y:auto;">
+        <div class="card-title">
+          <span>⚙️ 本地教材与素材管理中心 (${allUniqueDocs.length} 篇文档 · ${activeChunks.length} 段)</span>
+          <button class="btn" id="close-doc-mgr-btn">✕</button>
+        </div>
+        <div class="card-meta">
+          支持彻底删除不需要的教材、素材或内置示例。删除后立即从端侧向量索引和 IndexedDB 中物理移除，刷新页面永不恢复。
+        </div>
+
+        <div class="doc-mgr-toolbar">
+          <button class="btn danger" id="clear-all-docs-btn" ${activeChunks.length === 0 ? "disabled" : ""}>
+            🗑️ 一键清空所有素材 (0 门槛纯白板起步)
+          </button>
+          <button class="btn" id="restore-default-seeds-btn">
+            ↺ 恢复初始官方示例教材
+          </button>
+        </div>
+
+        <div class="doc-mgr-list">
+          ${allUniqueDocs.length === 0 ? `
+            <div style="text-align:center; padding:32px 12px; color:var(--muted); font-size:0.85rem;">
+              当前知识库为空，暂无任何素材。<br/>
+              您可以点击上方「恢复初始官方示例」或直接在主界面拖拽上传您自己的课件教材。
+            </div>
+          ` : allUniqueDocs.map((d) => `
+            <div class="doc-mgr-row">
+              <div class="doc-mgr-info">
+                <div class="doc-mgr-name">
+                  <span class="format-badge format-doc">DOC</span>
+                  <strong title="${escapeHtml(d.docId)}">${escapeHtml(d.docId)}</strong>
+                  ${d.isUploaded ? `<span class="pill" style="font-size:0.7rem; color:var(--good); border-color:var(--good);">📁 我的上传</span>` : `<span class="pill" style="font-size:0.7rem;">📦 内置示例</span>`}
+                </div>
+                <div class="doc-mgr-detail">包含 ${d.count} 个知识切片/页面</div>
+              </div>
+              <div class="doc-mgr-actions">
+                <button class="btn btn-xs primary" data-mgr-ask="${escapeHtml(d.docId)}">🎯 针对提问</button>
+                <button class="btn btn-xs" data-mgr-scope="${escapeHtml(d.docId)}">📌 设为范围</button>
+                <button class="btn btn-xs danger" data-mgr-del="${escapeHtml(d.docId)}">🗑️ 删除教材</button>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; margin-top:12px;">
+          <button class="btn primary" id="done-doc-mgr-btn">完成并返回</button>
         </div>
       </div>
     </div>
@@ -1028,18 +1090,92 @@ function bindEvents(): void {
     };
   });
 
-  document.querySelectorAll<HTMLElement>("[data-act-del]").forEach((btn) => {
+  document.querySelectorAll<HTMLElement>("[data-act-del-doc]").forEach((btn) => {
     btn.onclick = async (e) => {
       e.stopPropagation();
-      const docId = btn.dataset.actDel;
+      const docId = btn.dataset.actDelDoc;
       if (!docId) return;
-      state.uploadedChunks = state.uploadedChunks.filter((c) => c.docId !== docId);
-      await saveUploadedChunks(state.uploadedChunks);
-      const res = await coreClient.deleteDocument(docId);
-      state.chunks = res.chunks;
-      if (state.selectedDocFilter === docId) state.selectedDocFilter = null;
-      state.statusNote = `已从本地知识库移除文档《${docId}》`;
+      await deleteDocumentCompletely(docId);
+    };
+  });
+
+  document.querySelectorAll<HTMLElement>("[data-act-del-chunk]").forEach((btn) => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const chunkId = btn.dataset.actDelChunk;
+      if (!chunkId) return;
+      await deleteSingleChunk(chunkId);
+    };
+  });
+
+  const openDocMgrBtn = document.getElementById("open-doc-mgr-btn");
+  if (openDocMgrBtn) {
+    openDocMgrBtn.onclick = () => {
+      state.showDocManagerModal = true;
       renderShell();
+    };
+  }
+
+  const closeDocMgrBtn = document.getElementById("close-doc-mgr-btn");
+  if (closeDocMgrBtn) {
+    closeDocMgrBtn.onclick = () => {
+      state.showDocManagerModal = false;
+      renderShell();
+    };
+  }
+
+  const doneDocMgrBtn = document.getElementById("done-doc-mgr-btn");
+  if (doneDocMgrBtn) {
+    doneDocMgrBtn.onclick = () => {
+      state.showDocManagerModal = false;
+      renderShell();
+    };
+  }
+
+  const clearAllDocsBtn = document.getElementById("clear-all-docs-btn");
+  if (clearAllDocsBtn) {
+    clearAllDocsBtn.onclick = async () => {
+      await clearAllDocumentsCompletely();
+    };
+  }
+
+  const restoreSeedsBtn = document.getElementById("restore-default-seeds-btn");
+  if (restoreSeedsBtn) {
+    restoreSeedsBtn.onclick = async () => {
+      await restoreDefaultSeedDocuments();
+    };
+  }
+
+  document.querySelectorAll<HTMLElement>("[data-mgr-ask]").forEach((btn) => {
+    btn.onclick = async () => {
+      const docId = btn.dataset.mgrAsk;
+      if (!docId) return;
+      state.showDocManagerModal = false;
+      state.selectedDocFilter = docId;
+      const promptText = `请结合教材《${docId}》的核心知识体系进行系统剖析，提炼重难点并生成掌握度测试题。`;
+      const input = document.getElementById("prompt-input") as HTMLInputElement | null;
+      if (input) input.value = promptText;
+      await handleDispatch(promptText);
+    };
+  });
+
+  document.querySelectorAll<HTMLElement>("[data-mgr-scope]").forEach((btn) => {
+    btn.onclick = () => {
+      const docId = btn.dataset.mgrScope;
+      if (docId) {
+        state.selectedDocFilter = docId;
+        state.showDocManagerModal = false;
+        state.statusNote = `已将检索范围限定于：《${docId}》`;
+        renderShell();
+      }
+    };
+  });
+
+  document.querySelectorAll<HTMLElement>("[data-mgr-del]").forEach((btn) => {
+    btn.onclick = async () => {
+      const docId = btn.dataset.mgrDel;
+      if (!docId) return;
+      await deleteDocumentCompletely(docId);
     };
   });
 
@@ -1186,18 +1322,97 @@ async function handleDispatch(promptText: string): Promise<void> {
   renderShell();
 }
 
-async function bootstrap(): Promise<void> {
+async function deleteDocumentCompletely(docId: string): Promise<void> {
+  const deletedSet = loadDeletedDocIds();
+  deletedSet.add(docId);
+  saveDeletedDocIds(deletedSet);
+
+  state.uploadedChunks = state.uploadedChunks.filter((c) => c.docId !== docId);
+  await saveUploadedChunks(state.uploadedChunks);
+
+  const res = await coreClient.deleteDocument(docId);
+  state.chunks = res.chunks;
+  if (state.selectedDocFilter === docId) {
+    state.selectedDocFilter = null;
+  }
+  state.statusNote = `已彻底删除教材《${docId}》`;
+  renderShell();
+}
+
+async function deleteSingleChunk(chunkId: string): Promise<void> {
+  state.uploadedChunks = state.uploadedChunks.filter((c) => c.chunkId !== chunkId);
+  await saveUploadedChunks(state.uploadedChunks);
+
+  const res = await coreClient.deleteChunk(chunkId);
+  state.chunks = res.chunks;
+  if (state.highlightedChunkId === chunkId) {
+    state.highlightedChunkId = null;
+  }
+  state.statusNote = `已从知识库中删除切片 (ID: ${chunkId})`;
+  renderShell();
+}
+
+async function clearAllDocumentsCompletely(): Promise<void> {
+  const deletedSet = loadDeletedDocIds();
+  for (const c of state.chunks) {
+    deletedSet.add(c.docId);
+  }
+  saveDeletedDocIds(deletedSet);
+
+  state.uploadedChunks = [];
+  await saveUploadedChunks([]);
+
+  await coreClient.clearAllDocuments();
+  state.chunks = [];
+  state.highlightedChunkId = null;
+  state.selectedDocFilter = null;
+  state.statusNote = "已一键清空所有素材（白板起步）";
+  renderShell();
+}
+
+async function restoreDefaultSeedDocuments(): Promise<void> {
+  clearDeletedDocIds();
   const seed = await coreClient.initSeed();
-  state.chunks = seed.chunks;
+  const persisted = await loadUploadedChunks();
+  state.uploadedChunks = [...persisted];
+  if (persisted.length > 0) {
+    const updated = await coreClient.addDocChunks(persisted);
+    state.chunks = updated.chunks;
+  } else {
+    state.chunks = seed.chunks;
+  }
+  state.hideSeedChunks = false;
+  window.localStorage.removeItem("openlearnos_hide_seeds");
+  state.statusNote = "已恢复初始官方示例教材与您的上传资料";
+  renderShell();
+}
+
+async function bootstrap(): Promise<void> {
+  const deletedDocIds = loadDeletedDocIds();
+  const seed = await coreClient.initSeed();
+
+  // Filter out any seed materials deleted by the user
+  const filteredSeedChunks = seed.chunks.filter((c) => !deletedDocIds.has(c.docId));
+  if (filteredSeedChunks.length !== seed.chunks.length) {
+    const res = await coreClient.resetAllChunks(filteredSeedChunks);
+    state.chunks = res.chunks;
+  } else {
+    state.chunks = seed.chunks;
+  }
   state.memory = seed.memory;
 
   // Hydrate previously uploaded local documents from IndexedDB
   const persisted = await loadUploadedChunks();
-  if (persisted.length > 0) {
-    state.uploadedChunks = [...persisted];
-    const updated = await coreClient.addDocChunks(persisted);
+  const validPersisted = persisted.filter((c) => !deletedDocIds.has(c.docId));
+  if (validPersisted.length !== persisted.length) {
+    await saveUploadedChunks(validPersisted);
+  }
+
+  if (validPersisted.length > 0) {
+    state.uploadedChunks = [...validPersisted];
+    const updated = await coreClient.addDocChunks(validPersisted);
     state.chunks = updated.chunks;
-    state.statusNote = `已从 IndexedDB 恢复 ${persisted.length} 段本地资料`;
+    state.statusNote = `已从 IndexedDB 恢复 ${validPersisted.length} 段本地资料`;
   }
 
   renderShell();
