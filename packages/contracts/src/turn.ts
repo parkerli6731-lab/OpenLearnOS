@@ -6,6 +6,7 @@ export interface CitationRef {
   readonly docId: string;
   readonly page: number;
   readonly excerpt: string;
+  readonly chunkId?: string;
 }
 
 export interface TurnRecord {

@@ -512,3 +512,199 @@ body {
   color: var(--muted);
   line-height: 1.45;
 }
+
+/* Rich Text & Reading-Optimized HTML Elements */
+.rich-markdown-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  line-height: 1.6;
+}
+
+.rich-hero-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(139, 92, 246, 0.12) 100%);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  font-weight: 700;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.rich-callout-quote {
+  margin: 4px 0 8px 0;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border-left: 3.5px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.rich-quote-icon {
+  font-size: 1.2rem;
+  color: var(--accent);
+  line-height: 1;
+  opacity: 0.8;
+}
+
+.rich-quote-body {
+  font-size: 0.86rem;
+  color: var(--text);
+  line-height: 1.55;
+  font-style: italic;
+}
+
+.rich-section-card {
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 4px 0;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.grounding-card {
+  border-left: 3.5px solid #3b82f6;
+  background: rgba(59, 130, 246, 0.04);
+}
+
+.memory-card {
+  border-left: 3.5px solid #8b5cf6;
+  background: rgba(139, 92, 246, 0.04);
+}
+
+.action-card {
+  border-left: 3.5px solid #10b981;
+  background: rgba(16, 185, 129, 0.04);
+}
+
+.rich-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.rich-section-name {
+  color: var(--text);
+}
+
+.rich-section-meta {
+  margin-left: auto;
+}
+
+.rich-section-body {
+  font-size: 0.84rem;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.rich-para {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.rich-strong {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.rich-inline-code {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.8rem;
+  background: var(--surface-2);
+  padding: 2px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  color: var(--accent);
+}
+
+.rich-math-span {
+  font-family: KaTeX_Math, "Times New Roman", serif;
+  font-style: italic;
+  padding: 0 2px;
+}
+
+.trace-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+.trace-pill:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.evidence-shelf {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.evidence-title {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.evidence-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.evidence-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  color: var(--text);
+}
+
+.evidence-pill:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.evidence-num {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.evidence-doc {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evidence-page {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
