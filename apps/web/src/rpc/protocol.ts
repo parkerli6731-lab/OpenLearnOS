@@ -31,6 +31,8 @@ export interface RawDocumentUploadPayload {
 export type WorkerRequestPayload =
   | { type: "INIT_SEED" }
   | { type: "ADD_DOC_CHUNKS"; chunks: readonly DocumentChunk[] }
+  | { type: "RESET_ALL_CHUNKS"; chunks: readonly DocumentChunk[] }
+  | { type: "DELETE_DOCUMENT"; docId: string }
   | { type: "INGEST_RAW_DOCUMENTS"; documents: readonly RawDocumentUploadPayload[] }
   | {
       type: "PREPARE_TURN";
@@ -38,6 +40,7 @@ export type WorkerRequestPayload =
       mode: PersonaMode;
       userPrompt: string;
       guardianRevealUnlocked: boolean;
+      docIdFilter?: string | undefined;
     }
   | {
       type: "COMMIT_ASSISTANT_TURN";
@@ -57,6 +60,7 @@ export type WorkerRequestPayload =
       mode: PersonaMode;
       goal: string;
       guardianRevealUnlocked: boolean;
+      docIdFilter?: string | undefined;
     }
   | {
       type: "SUBMIT_QUIZ";

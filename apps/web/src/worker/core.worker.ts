@@ -164,6 +164,21 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         reply({ id: req.id, ok: true, payload: { totalChunks: allChunks.length, chunks: [...allChunks] } });
         break;
       }
+      case "RESET_ALL_CHUNKS": {
+        allChunks.length = 0;
+        allChunks.push(...req.chunks);
+        retriever.indexChunks(allChunks);
+        reply({ id: req.id, ok: true, payload: { totalChunks: allChunks.length, chunks: [...allChunks] } });
+        break;
+      }
+      case "DELETE_DOCUMENT": {
+        const filtered = allChunks.filter((c) => c.docId !== req.docId);
+        allChunks.length = 0;
+        allChunks.push(...filtered);
+        retriever.indexChunks(allChunks);
+        reply({ id: req.id, ok: true, payload: { totalChunks: allChunks.length, chunks: [...allChunks] } });
+        break;
+      }
       case "INGEST_RAW_DOCUMENTS": {
         const newChunks: DocumentChunk[] = [];
         for (const doc of req.documents) {
@@ -191,7 +206,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           req.guardianRevealUnlocked
         );
         const userTurn = turnEngine.appendTurn(req.sessionId, "user", scrubbedPrompt);
-        const hits = retriever.search(scrubbedPrompt, 3);
+        const hits = retriever.search(scrubbedPrompt, 3, undefined, req.docIdFilter);
         const context = turnEngine.buildContextWindow(req.sessionId, 12000);
         const payload: PreparedTurnResult = {
           scrubbedPrompt,
@@ -315,6 +330,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           mode: req.mode,
           goal: req.goal,
           guardianRevealUnlocked: req.guardianRevealUnlocked,
+          ...(req.docIdFilter ? { docIdFilter: req.docIdFilter } : {}),
         });
         const payload: AgentGoalWorkerPayload = {
           run,

@@ -158,6 +158,7 @@ export class LearningAgentOrchestrator {
     mode: PersonaMode;
     goal: string;
     guardianRevealUnlocked: boolean;
+    docIdFilter?: string | undefined;
   }): AgentRunResult {
     const runId = `agent-run-${this.runSeq++}`;
     const safeGoal = this.safetyGate.redactSecrets(params.goal);
@@ -240,7 +241,7 @@ export class LearningAgentOrchestrator {
 
     // Step 4: Tool search_corpus
     const tSearch = performance.now();
-    const hits = this.retriever.search(safeGoal, 3);
+    const hits = this.retriever.search(safeGoal, 3, undefined, params.docIdFilter);
     const citations: CitationRef[] = hits.map((h) => ({
       docId: h.chunk.docId,
       page: h.chunk.page,
@@ -250,11 +251,13 @@ export class LearningAgentOrchestrator {
       stepIndex: stepNo++,
       phase: "act",
       tool: "search_corpus",
-      thought: "调用本地 Hybrid RAG（中英 BM25 + 向量融合）定位原文页码证据。",
+      thought: params.docIdFilter
+        ? `在用户限定文档《${params.docIdFilter}》中执行本地中英 Hybrid RAG 定位证据。`
+        : "调用本地 Hybrid RAG（中英 BM25 + 向量融合）定位原文页码证据。",
       observation:
         hits.length > 0
-          ? `命中 ${hits.length} 段高相关原文：${hits.map((h) => `[${h.chunk.docId} P.${h.chunk.page}]`).join(", ")}`
-          : "未命中强相关本地段落，将基于通用教学框架构建推导。",
+          ? `命中 ${hits.length} 段${params.docIdFilter ? `限定文档《${params.docIdFilter}》的` : ""}高相关原文：${hits.map((h) => `[${h.chunk.docId} P.${h.chunk.page}]`).join(", ")}`
+          : `未在${params.docIdFilter ? `限定文档《${params.docIdFilter}》` : "本地段落"}中检索到直接匹配，将基于通用教学框架构建推导。`,
       durationMs: Number((performance.now() - tSearch).toFixed(3)),
     });
 
