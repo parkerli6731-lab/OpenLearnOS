@@ -27,7 +27,15 @@ import {
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    navigator.serviceWorker
+      .register("./sw.js")
+      .then((reg) => {
+        reg.update().catch(() => {});
+      })
+      .catch(() => {});
+  });
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    window.location.reload();
   });
 }
 
@@ -171,6 +179,7 @@ function renderShell(): void {
         </nav>
 
         <div class="top-actions">
+          <button class="btn btn-xs" id="force-update-btn" style="color:var(--good); border-color:rgba(16, 185, 129, 0.45); font-weight:700;" title="清理浏览器历史缓存并强制加载最新版本">🔄 强制拉取最新版</button>
           <button class="btn" id="guide-top-btn" style="background:var(--accent-soft); color:var(--accent); font-weight:600;">💡 新手快速入门</button>
           <span class="pill ok" id="latency-pill">窗口: ${state.lastBuildMs.toFixed(2)} ms (${state.totalStoredTurns} 轮)</span>
           <button class="btn" id="stress-btn">⚡ 150轮压测</button>
@@ -182,8 +191,9 @@ function renderShell(): void {
         <!-- Left Pane: Local Grounded Source Reader -->
         <section class="pane">
           <div class="pane-header">
-            <span style="font-size:0.86rem;">📚 溯源知识库 (${displayChunks.length} 段)</span>
+            <span style="font-size:0.86rem; font-weight:700;">📚 溯源知识库 (${displayChunks.length} 段)</span>
             <div style="display:flex; gap:4px; align-items:center;">
+              <button class="btn btn-xs danger" id="clear-all-quick-btn" title="一键彻底清空本地资料库">🗑️ 清空资料</button>
               <button class="btn btn-xs" id="open-doc-mgr-btn" style="background:var(--accent-soft); color:var(--accent); font-weight:600;" title="打开教材与素材管理中心">⚙️ 管理素材</button>
               ${state.uploadedChunks.length > 0 ? `
                 <button class="btn btn-xs" id="toggle-seeds-btn" title="切换是否展示官方演示文档">
@@ -250,7 +260,10 @@ function renderShell(): void {
                       <span class="format-badge ${fmtClass}">${escapeHtml(fmt.toUpperCase())}</span>
                       <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:700;">${escapeHtml(c.docId)}</span>
                     </div>
-                    <span class="trace-tag">P.${c.page}</span>
+                    <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                      <span class="trace-tag">P.${c.page}</span>
+                      <button class="card-delete-icon-btn" data-act-del-doc="${escapeHtml(c.docId)}" title="彻底删除《${escapeHtml(c.docId)}》整篇教材">🗑️</button>
+                    </div>
                   </div>
                   <div class="card-meta">${escapeHtml(c.headingPath.join(" › "))}</div>
                   ${c.mediaType === "image" && c.dataUrl ? `<img src="${c.dataUrl}" alt="${escapeHtml(c.docId)}" class="chunk-img-preview" />` : ""}
@@ -259,8 +272,8 @@ function renderShell(): void {
                   <div class="card-actions-bar">
                     <button class="card-act-btn primary" data-act-ask="${escapeHtml(c.chunkId)}" title="以此卡片内容为背景立即提问">🎯 针对此卡片提问</button>
                     <button class="card-act-btn" data-act-scope="${escapeHtml(c.docId)}" title="锁定仅检索此文档">📌 仅限此文档</button>
-                    <button class="card-act-btn danger" data-act-del-doc="${escapeHtml(c.docId)}" title="彻底删除此教材所有页面">🗑️ 删整篇</button>
-                    <button class="card-act-btn danger-soft" data-act-del-chunk="${escapeHtml(c.chunkId)}" title="仅从知识库删除此单一片段">✕ 删本页</button>
+                    <button class="card-act-btn danger" data-act-del-doc="${escapeHtml(c.docId)}" title="彻底删除此教材所有页面">🗑️ 彻底删除此教材</button>
+                    <button class="card-act-btn danger-soft" data-act-del-chunk="${escapeHtml(c.chunkId)}" title="仅从知识库删除此单一片段">✕ 仅删本页</button>
                   </div>
                 </article>
               `;
@@ -1129,6 +1142,28 @@ function bindEvents(): void {
     doneDocMgrBtn.onclick = () => {
       state.showDocManagerModal = false;
       renderShell();
+    };
+  }
+
+  const forceUpdateBtn = document.getElementById("force-update-btn");
+  if (forceUpdateBtn) {
+    forceUpdateBtn.onclick = async () => {
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+      if ("serviceWorker" in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const r of regs) await r.unregister();
+      }
+      window.location.reload();
+    };
+  }
+
+  const clearQuickBtn = document.getElementById("clear-all-quick-btn");
+  if (clearQuickBtn) {
+    clearQuickBtn.onclick = async () => {
+      await clearAllDocumentsCompletely();
     };
   }
 
