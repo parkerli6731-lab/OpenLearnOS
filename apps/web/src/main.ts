@@ -8,7 +8,7 @@ import type {
   RetrievalEvalReport,
   TurnRecord,
 } from "@openlearnos/contracts";
-import { SHELL_PROFILES } from "@openlearnos/ui";
+import { renderRichTextHtml, SHELL_PROFILES } from "@openlearnos/ui";
 import { CoreWorkerClient } from "./rpc/core-client.ts";
 import type { MemorySnapshot } from "./rpc/protocol.ts";
 import {
@@ -150,7 +150,7 @@ function renderShell(): void {
                   const fmt = c.sourceFormat || (c.mediaType === "image" ? "image" : c.docId.split(".").pop()?.toLowerCase() || "txt");
                   const fmtClass = `format-${fmt === "jpeg" ? "image" : fmt === "jpg" ? "image" : fmt === "png" ? "image" : fmt}`;
                   return `
-              <article class="card ${state.highlightedChunkId === c.chunkId ? "highlight" : ""}">
+              <article class="card ${state.highlightedChunkId === c.chunkId ? "highlight" : ""}" id="chunk-${escapeHtml(c.chunkId)}">
                 <div class="card-title">
                   <div style="display:flex; align-items:center; gap:6px; overflow:hidden;">
                     <span class="format-badge ${fmtClass}">${escapeHtml(fmt.toUpperCase())}</span>
@@ -386,12 +386,28 @@ function renderAgentWorkspace(): string {
     }
 
     <div class="card">
-      <div style="white-space:pre-wrap;">${escapeHtml(run.synthesisMarkdown)}</div>
+      <div class="rich-markdown-body">${renderRichTextHtml(run.synthesisMarkdown)}</div>
       ${
         run.citations.length > 0
-          ? `<div style="margin-top:8px; display:flex; gap:4px; flex-wrap:wrap;">${run.citations
-              .map((c) => `<span class="trace-tag">${escapeHtml(c.docId)} · P.${c.page}</span>`)
-              .join("")}</div>`
+          ? `
+          <div class="evidence-shelf">
+            <div class="evidence-title">📚 引用溯源依据卡片（点击在左侧高亮原文）：</div>
+            <div class="evidence-cards">
+              ${run.citations
+                .map((c, idx) => {
+                  const targetChunkId = c.chunkId || state.chunks.find((chunk) => chunk.docId === c.docId)?.chunkId || "";
+                  return `
+                <button class="evidence-pill" data-cite-chunk="${escapeHtml(targetChunkId)}" data-cite-doc="${escapeHtml(c.docId)}" title="点击在左侧资料库高亮原文">
+                  <span class="evidence-num">[${idx + 1}]</span>
+                  <span class="evidence-doc">${escapeHtml(c.docId)}</span>
+                  <span class="evidence-page">P.${c.page}</span>
+                </button>
+              `;
+                })
+                .join("")}
+            </div>
+          </div>
+          `
           : ""
       }
     </div>
@@ -466,7 +482,7 @@ function renderChatWorkspace(): string {
         (t) => `
       <div class="msg ${t.role}">
         <div class="msg-meta">${t.role === "user" ? "学习者" : "OpenLearnOS"} · #${t.index + 1}</div>
-        <div>${escapeHtml(t.content)}</div>
+        <div class="rich-markdown-body">${renderRichTextHtml(t.content)}</div>
       </div>`
       )
       .join("")
@@ -884,6 +900,31 @@ function bindEvents(): void {
       await handleDispatch("用 5 分钟心智模型帮我掌握 FSRS 间隔重复闭环并生成明日复习卡");
     };
   }
+
+  document.querySelectorAll<HTMLElement>("[data-cite-chunk]").forEach((el) => {
+    el.onclick = () => {
+      const chunkId = el.dataset.citeChunk;
+      if (chunkId) {
+        state.highlightedChunkId = chunkId;
+        renderShell();
+        const target = document.getElementById(`chunk-${chunkId}`);
+        target?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    };
+  });
+
+  document.querySelectorAll<HTMLElement>("[data-cite-pill]").forEach((el) => {
+    el.onclick = () => {
+      const pillText = el.dataset.citePill || "";
+      const found = state.chunks.find((c) => pillText.includes(c.docId));
+      if (found) {
+        state.highlightedChunkId = found.chunkId;
+        renderShell();
+        const target = document.getElementById(`chunk-${found.chunkId}`);
+        target?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    };
+  });
 }
 
 async function handleDispatch(promptText: string): Promise<void> {
