@@ -20,9 +20,18 @@ export interface MemorySnapshot {
   readonly dueConcepts: readonly L2ConceptNode[];
 }
 
+export interface RawDocumentUploadPayload {
+  readonly filename: string;
+  readonly buffer?: Uint8Array;
+  readonly textContent?: string;
+  readonly dataUrl?: string;
+  readonly mimeType?: string;
+}
+
 export type WorkerRequestPayload =
   | { type: "INIT_SEED" }
   | { type: "ADD_DOC_CHUNKS"; chunks: readonly DocumentChunk[] }
+  | { type: "INGEST_RAW_DOCUMENTS"; documents: readonly RawDocumentUploadPayload[] }
   | {
       type: "PREPARE_TURN";
       sessionId: string;

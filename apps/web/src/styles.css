@@ -399,9 +399,10 @@ body {
   cursor: pointer;
 }
 
-.upload-zone:hover {
+.upload-zone:hover, .upload-zone.dragover {
   border-color: var(--accent);
   color: var(--text);
+  background: var(--surface-2);
 }
 
 .trace-tag {
@@ -411,5 +412,45 @@ body {
   border-radius: 6px;
   background: var(--accent-soft);
   color: var(--accent);
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+.format-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+.format-pdf { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+.format-docx { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+.format-xlsx { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+.format-csv { background: rgba(20, 184, 166, 0.15); color: #2dd4bf; border: 1px solid rgba(20, 184, 166, 0.3); }
+.format-image { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
+.format-md { background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); }
+.format-txt { background: rgba(156, 163, 175, 0.15); color: #9ca3af; border: 1px solid rgba(156, 163, 175, 0.3); }
+
+.chunk-img-preview {
+  max-width: 100%;
+  max-height: 140px;
+  border-radius: 6px;
+  margin-top: 6px;
+  object-fit: contain;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  display: block;
+}
+
+.chunk-table-container {
+  overflow-x: auto;
+  font-size: 0.75rem;
+  background: var(--surface-2);
+  padding: 6px;
+  border-radius: 6px;
+  margin-top: 6px;
+  border: 1px solid var(--border);
   font-family: ui-monospace, Menlo, monospace;
 }

@@ -1,6 +1,8 @@
 # Dependencies & build outputs
 node_modules/
 dist/
+dist-desktop/
+*.dmg
 build/
 target/
 .vite/

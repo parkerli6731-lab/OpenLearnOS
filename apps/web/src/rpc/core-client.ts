@@ -12,6 +12,7 @@ import type {
   MemorySnapshot,
   PreparedTurnResult,
   QuizSubmitWorkerPayload,
+  RawDocumentUploadPayload,
   Stress150Result,
   WorkerRequestPayload,
   WorkerResponse,
@@ -60,6 +61,14 @@ export class CoreWorkerClient {
 
   addDocChunks(chunks: readonly DocumentChunk[]): Promise<{ totalChunks: number; chunks: readonly DocumentChunk[] }> {
     return this.call({ type: "ADD_DOC_CHUNKS", chunks });
+  }
+
+  ingestRawDocuments(documents: readonly RawDocumentUploadPayload[]): Promise<{
+    totalChunks: number;
+    chunks: readonly DocumentChunk[];
+    newChunks: readonly DocumentChunk[];
+  }> {
+    return this.call({ type: "INGEST_RAW_DOCUMENTS", documents });
   }
 
   prepareTurn(

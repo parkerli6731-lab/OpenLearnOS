@@ -10,6 +10,7 @@ import {
   InMemoryTurnEngine,
   LearningAgentOrchestrator,
   LocalHybridRetriever,
+  MultiFormatDocumentParser,
   SocraticSafetyGate,
 } from "@openlearnos/core";
 import type {
@@ -27,6 +28,7 @@ const memoryStore = new AuditableMemoryStore();
 const retriever = new LocalHybridRetriever();
 const safetyGate = new SocraticSafetyGate();
 const agentOrchestrator = new LearningAgentOrchestrator(memoryStore, retriever, safetyGate);
+const docParser = new MultiFormatDocumentParser();
 
 const allChunks: DocumentChunk[] = [];
 const traceIndex: L1TraceRecord[] = [];
@@ -146,7 +148,7 @@ function seedInitialState(): { chunks: readonly DocumentChunk[]; memory: MemoryS
   return { chunks: [...allChunks], memory: snapshotMemory() };
 }
 
-self.onmessage = (event: MessageEvent<WorkerRequest>) => {
+self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   const req = event.data;
   const reply = (res: WorkerResponse) => self.postMessage(res);
 
@@ -160,6 +162,25 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
         allChunks.push(...req.chunks);
         retriever.indexChunks(allChunks);
         reply({ id: req.id, ok: true, payload: { totalChunks: allChunks.length, chunks: [...allChunks] } });
+        break;
+      }
+      case "INGEST_RAW_DOCUMENTS": {
+        const newChunks: DocumentChunk[] = [];
+        for (const doc of req.documents) {
+          const parsed = await docParser.parse(doc);
+          newChunks.push(...parsed);
+        }
+        allChunks.push(...newChunks);
+        retriever.indexChunks(allChunks);
+        reply({
+          id: req.id,
+          ok: true,
+          payload: {
+            totalChunks: allChunks.length,
+            chunks: [...allChunks],
+            newChunks,
+          },
+        });
         break;
       }
       case "PREPARE_TURN": {
