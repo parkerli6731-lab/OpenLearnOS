@@ -427,8 +427,67 @@ trailer <</Root 1 0 R>>
   );
 }
 
+function verifyDocumentScopedRetrievalAndFiltering(): void {
+  const retriever = new LocalHybridRetriever();
+  retriever.indexChunks([
+    {
+      chunkId: "docA-1",
+      docId: "Linear_Algebra_Textbook.pdf",
+      page: 12,
+      headingPath: ["Chapter 3", "Eigenvalues"],
+      text: "Eigenvalues and eigenvectors satisfy Av = lambda v for non-zero vectors v.",
+    },
+    {
+      chunkId: "docB-1",
+      docId: "Quantum_Mechanics_Notes.md",
+      page: 1,
+      headingPath: ["Postulate 1", "State Space"],
+      text: "Quantum state vectors live in a complex Hilbert space with inner product.",
+    },
+    {
+      chunkId: "docC-1",
+      docId: "K12_Algebra_Basics.docx",
+      page: 5,
+      headingPath: ["Linear Equations", "Systems"],
+      text: "Solving systems of linear equations and coefficient vectors using Gaussian elimination and row operations.",
+    },
+  ]);
+
+  // Test 1: Without filter, searching for "vectors" hits all documents
+  const allHits = retriever.search("vectors", 3);
+  assert.equal(allHits.length, 3);
+
+  // Test 2: With filter, strictly limited to docB
+  const scopedHits = retriever.search("vectors", 3, undefined, "Quantum_Mechanics_Notes.md");
+  assert.equal(scopedHits.length, 1);
+  assert.equal(scopedHits[0]?.chunk.docId, "Quantum_Mechanics_Notes.md");
+
+  // Test 3: Agent orchestrator with docIdFilter
+  const memory = new AuditableMemoryStore();
+  const safety = new SocraticSafetyGate();
+  const agent = new LearningAgentOrchestrator(memory, retriever, safety);
+
+  const runResult = agent.executeGoal({
+    sessionId: "test-scoped",
+    mode: "scholar",
+    goal: "Explain vectors and state space",
+    guardianRevealUnlocked: false,
+    docIdFilter: "Quantum_Mechanics_Notes.md",
+  });
+
+  assert.ok(runResult.citations.length > 0);
+  for (const c of runResult.citations) {
+    assert.equal(c.docId, "Quantum_Mechanics_Notes.md");
+  }
+  const searchStep = runResult.steps.find((s) => s.tool === "search_corpus");
+  assert.ok(searchStep?.observation.includes("Quantum_Mechanics_Notes.md"));
+
+  console.log("[PASS] Document Scoped Retrieval & Agent Orchestration Harness: strict isolation verified");
+}
+
 verify150TurnPerformance();
 verifyHybridRagGoldenEval();
+verifyDocumentScopedRetrievalAndFiltering();
 verifyAuditableMemoryInvariants();
 verifyK12SocraticAndSecretRedaction();
 verifyAutonomousLearningAgentLoop();

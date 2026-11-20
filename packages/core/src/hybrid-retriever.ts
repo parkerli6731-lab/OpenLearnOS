@@ -77,7 +77,8 @@ export class LocalHybridRetriever implements HybridRetrieverContract {
   search(
     query: string,
     topK: number,
-    queryEmbedding?: readonly number[]
+    queryEmbedding?: readonly number[],
+    docIdFilter?: string
   ): readonly RetrievalHit[] {
     const qTokens = tokenizeBilingual(query);
     const N = this.chunks.length;
@@ -89,8 +90,10 @@ export class LocalHybridRetriever implements HybridRetrieverContract {
 
     for (let i = 0; i < N; i++) {
       const chunk = this.chunks[i];
+      if (!chunk) continue;
+      if (docIdFilter && chunk.docId !== docIdFilter) continue;
       const tfMap = this.termFreqs[i];
-      if (!chunk || !tfMap) continue;
+      if (!tfMap) continue;
 
       let docLen = 0;
       for (const count of tfMap.values()) docLen += count;

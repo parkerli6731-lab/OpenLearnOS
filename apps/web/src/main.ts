@@ -35,6 +35,9 @@ interface AppState {
   chunks: readonly DocumentChunk[];
   uploadedChunks: DocumentChunk[];
   highlightedChunkId: string | null;
+  selectedDocFilter: string | null;
+  libraryCategory: "all" | "uploaded" | "seed";
+  hideSeedChunks: boolean;
   visibleTurns: readonly TurnRecord[];
   totalStoredTurns: number;
   lastBuildMs: number;
@@ -69,6 +72,9 @@ const state: AppState = {
   chunks: [],
   uploadedChunks: [],
   highlightedChunkId: null,
+  selectedDocFilter: null,
+  libraryCategory: "all",
+  hideSeedChunks: window.localStorage.getItem("openlearnos_hide_seeds") === "1",
   visibleTurns: [],
   totalStoredTurns: 0,
   lastBuildMs: 0,
@@ -107,6 +113,38 @@ function renderShell(): void {
   const app = document.getElementById("app");
   if (!app) return;
 
+  const uploadedChunkIds = new Set(state.uploadedChunks.map((c) => c.chunkId));
+  const activeChunks =
+    state.hideSeedChunks && state.uploadedChunks.length > 0
+      ? state.uploadedChunks
+      : state.chunks;
+  const seedChunks = state.chunks.filter((c) => !uploadedChunkIds.has(c.chunkId));
+
+  const docMap = new Map<string, { docId: string; count: number; isUploaded: boolean }>();
+  for (const c of activeChunks) {
+    const isUp = uploadedChunkIds.has(c.chunkId);
+    const existing = docMap.get(c.docId);
+    if (existing) {
+      existing.count++;
+    } else {
+      docMap.set(c.docId, { docId: c.docId, count: 1, isUploaded: isUp });
+    }
+  }
+  const allUniqueDocs = Array.from(docMap.values());
+  const uploadedDocs = allUniqueDocs.filter((d) => d.isUploaded);
+  const seedDocs = allUniqueDocs.filter((d) => !d.isUploaded);
+
+  let catFilteredChunks = activeChunks;
+  if (state.libraryCategory === "uploaded") {
+    catFilteredChunks = activeChunks.filter((c) => uploadedChunkIds.has(c.chunkId));
+  } else if (state.libraryCategory === "seed") {
+    catFilteredChunks = activeChunks.filter((c) => !uploadedChunkIds.has(c.chunkId));
+  }
+
+  const displayChunks = state.selectedDocFilter
+    ? catFilteredChunks.filter((c) => c.docId === state.selectedDocFilter)
+    : catFilteredChunks;
+
   app.innerHTML = `
     <div class="layout">
       <header class="topbar">
@@ -136,36 +174,86 @@ function renderShell(): void {
         <!-- Left Pane: Local Grounded Source Reader -->
         <section class="pane">
           <div class="pane-header">
-            <span>📚 双栏溯源资料库 (${state.chunks.length} 段)</span>
+            <span style="font-size:0.86rem;">📚 溯源知识库 (${displayChunks.length} 段)</span>
+            ${state.uploadedChunks.length > 0 ? `
+              <button class="btn btn-xs" id="toggle-seeds-btn" title="切换是否展示官方演示文档">
+                ${state.hideSeedChunks ? "👁️ 显示演示库" : "📦 隐藏演示库"}
+              </button>
+            ` : ""}
           </div>
           <div class="pane-body">
             <label class="upload-zone" id="upload-zone" for="file-upload">
-              + 上传通用全格式学习资料（PPTX/PDF/Word/Excel/CSV/EPUB/视频字幕/代码/图片扫描件）<br/>
-              <small>拖拽或点击上传 · 100% 端侧解析 · 刷新不丢失</small>
+              + 上传通用全格式学习资料（支持同时多选/拖拽多份文件）<br/>
+              <small>PPTX / PDF / Word / Excel / CSV / EPUB / 字幕 / 代码 / 图片 · 100% 端侧解析</small>
               <input id="file-upload" type="file" accept=".pdf,.docx,.xlsx,.pptx,.ppt,.epub,.csv,.tsv,.txt,.md,.markdown,.json,.yaml,.yml,.xml,.html,.tex,.py,.js,.ts,.rs,.cpp,.c,.java,.sql,.sh,.srt,.vtt,.png,.jpg,.jpeg,.webp,.svg,.bmp,.gif" multiple hidden />
             </label>
-            ${state.chunks
-              .map(
-                (c) => {
-                  const fmt = c.sourceFormat || (c.mediaType === "image" ? "image" : c.docId.split(".").pop()?.toLowerCase() || "txt");
-                  const fmtClass = `format-${fmt === "jpeg" ? "image" : fmt === "jpg" ? "image" : fmt === "png" ? "image" : fmt}`;
-                  return `
-              <article class="card ${state.highlightedChunkId === c.chunkId ? "highlight" : ""}" id="chunk-${escapeHtml(c.chunkId)}">
-                <div class="card-title">
-                  <div style="display:flex; align-items:center; gap:6px; overflow:hidden;">
-                    <span class="format-badge ${fmtClass}">${escapeHtml(fmt.toUpperCase())}</span>
-                    <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(c.docId)}</span>
+
+            <!-- Document Scope Selector: 解决用户"如何选择资源进行解答"的核心痛点 -->
+            <div class="scope-control-box">
+              <div class="scope-label-row">
+                <span class="scope-title">🎯 问答检索范围：</span>
+                ${state.selectedDocFilter ? `<button class="btn-link" id="clear-doc-filter-btn">✕ 切回全库综合检索</button>` : `<span style="font-size:0.72rem; color:var(--muted);">跨文档融合</span>`}
+              </div>
+              <select id="doc-filter-select" class="doc-filter-select">
+                <option value="" ${state.selectedDocFilter === null ? "selected" : ""}>
+                  🌐 全库资料综合检索 (共 ${allUniqueDocs.length} 篇文档 · ${activeChunks.length} 段)
+                </option>
+                ${uploadedDocs.length > 0 ? `
+                  <optgroup label="📁 我的上传资料 (${uploadedDocs.length} 篇)">
+                    ${uploadedDocs.map((d) => `<option value="${escapeHtml(d.docId)}" ${state.selectedDocFilter === d.docId ? "selected" : ""}>📄 ${escapeHtml(d.docId)} (${d.count} 段)</option>`).join("")}
+                  </optgroup>
+                ` : ""}
+                ${seedDocs.length > 0 && !state.hideSeedChunks ? `
+                  <optgroup label="📦 官方教学示例 (${seedDocs.length} 篇)">
+                    ${seedDocs.map((d) => `<option value="${escapeHtml(d.docId)}" ${state.selectedDocFilter === d.docId ? "selected" : ""}>📄 ${escapeHtml(d.docId)} (${d.count} 段)</option>`).join("")}
+                  </optgroup>
+                ` : ""}
+              </select>
+            </div>
+
+            ${state.selectedDocFilter ? `
+              <div class="active-scope-banner">
+                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">📌 限定问答仅检索：《${escapeHtml(state.selectedDocFilter)}》</span>
+                <button class="btn btn-xs" id="reset-scope-badge-btn">解除限定</button>
+              </div>
+            ` : ""}
+
+            <div class="lib-category-tabs">
+              <button class="lib-tab-btn ${state.libraryCategory === "all" ? "active" : ""}" data-lib-cat="all">全部 (${activeChunks.length})</button>
+              <button class="lib-tab-btn ${state.libraryCategory === "uploaded" ? "active" : ""}" data-lib-cat="uploaded">📁 我的上传 (${state.uploadedChunks.length})</button>
+              ${!state.hideSeedChunks ? `<button class="lib-tab-btn ${state.libraryCategory === "seed" ? "active" : ""}" data-lib-cat="seed">📦 演示库 (${seedChunks.length})</button>` : ""}
+            </div>
+
+            ${displayChunks.length === 0 ? `
+              <div style="text-align:center; padding:24px 12px; color:var(--muted); font-size:0.8rem;">
+                暂无匹配卡片，请上传文件或切回全部
+              </div>
+            ` : displayChunks.map((c) => {
+              const fmt = c.sourceFormat || (c.mediaType === "image" ? "image" : c.docId.split(".").pop()?.toLowerCase() || "txt");
+              const fmtClass = `format-${fmt === "jpeg" ? "image" : fmt === "jpg" ? "image" : fmt === "png" ? "image" : fmt}`;
+              const isUp = uploadedChunkIds.has(c.chunkId);
+              const isSelected = state.highlightedChunkId === c.chunkId;
+              return `
+                <article class="card chunk-card ${isSelected ? "highlight" : ""}" id="chunk-${escapeHtml(c.chunkId)}" data-chunk-card="${escapeHtml(c.chunkId)}">
+                  <div class="card-title">
+                    <div style="display:flex; align-items:center; gap:6px; overflow:hidden;">
+                      <span class="format-badge ${fmtClass}">${escapeHtml(fmt.toUpperCase())}</span>
+                      <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:700;">${escapeHtml(c.docId)}</span>
+                    </div>
+                    <span class="trace-tag">P.${c.page}</span>
                   </div>
-                  <span class="trace-tag">P.${c.page}</span>
-                </div>
-                <div class="card-meta">${escapeHtml(c.headingPath.join(" › "))}</div>
-                ${c.mediaType === "image" && c.dataUrl ? `<img src="${c.dataUrl}" alt="${escapeHtml(c.docId)}" class="chunk-img-preview" />` : ""}
-                ${c.mediaType === "table" ? `<div class="chunk-table-container"><pre style="margin:0;">${escapeHtml(c.text)}</pre></div>` : `<div>${escapeHtml(c.text)}</div>`}
-              </article>
-            `;
-                }
-              )
-              .join("")}
+                  <div class="card-meta">${escapeHtml(c.headingPath.join(" › "))}</div>
+                  ${c.mediaType === "image" && c.dataUrl ? `<img src="${c.dataUrl}" alt="${escapeHtml(c.docId)}" class="chunk-img-preview" />` : ""}
+                  ${c.mediaType === "table" ? `<div class="chunk-table-container"><pre style="margin:0;">${escapeHtml(c.text)}</pre></div>` : `<div>${escapeHtml(c.text)}</div>`}
+                  
+                  <div class="card-actions-bar">
+                    <button class="card-act-btn primary" data-act-ask="${escapeHtml(c.chunkId)}" title="以此卡片内容为背景立即提问">🎯 针对此卡片提问</button>
+                    <button class="card-act-btn" data-act-scope="${escapeHtml(c.docId)}" title="锁定仅检索此文档">📌 仅限此文档</button>
+                    ${isUp ? `<button class="card-act-btn danger" data-act-del="${escapeHtml(c.docId)}" title="从本地资料库中彻底移除此文档">🗑️ 移除</button>` : ""}
+                  </div>
+                </article>
+              `;
+            }).join("")}
           </div>
         </section>
 
@@ -901,6 +989,111 @@ function bindEvents(): void {
     };
   }
 
+  document.querySelectorAll<HTMLElement>("[data-chunk-card]").forEach((el) => {
+    el.onclick = (e) => {
+      if ((e.target as HTMLElement).closest("button")) return;
+      const chunkId = el.dataset.chunkCard;
+      if (chunkId) {
+        state.highlightedChunkId = chunkId;
+        renderShell();
+      }
+    };
+  });
+
+  document.querySelectorAll<HTMLElement>("[data-act-ask]").forEach((btn) => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const chunkId = btn.dataset.actAsk;
+      const chunk = state.chunks.find((c) => c.chunkId === chunkId);
+      if (!chunk) return;
+      state.highlightedChunkId = chunk.chunkId;
+      state.selectedDocFilter = chunk.docId;
+      const targetTopic = chunk.headingPath.slice(-1)[0] || chunk.text.slice(0, 32).trim();
+      const promptText = `请结合《${chunk.docId}》第 ${chunk.page} 页「${targetTopic}」的核心知识点进行深度剖析，并出一道掌握度测试题。`;
+      const input = document.getElementById("prompt-input") as HTMLInputElement | null;
+      if (input) input.value = promptText;
+      await handleDispatch(promptText);
+    };
+  });
+
+  document.querySelectorAll<HTMLElement>("[data-act-scope]").forEach((btn) => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const docId = btn.dataset.actScope;
+      if (docId) {
+        state.selectedDocFilter = docId;
+        state.statusNote = `已将检索范围限定于：《${docId}》`;
+        renderShell();
+      }
+    };
+  });
+
+  document.querySelectorAll<HTMLElement>("[data-act-del]").forEach((btn) => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const docId = btn.dataset.actDel;
+      if (!docId) return;
+      state.uploadedChunks = state.uploadedChunks.filter((c) => c.docId !== docId);
+      await saveUploadedChunks(state.uploadedChunks);
+      const res = await coreClient.deleteDocument(docId);
+      state.chunks = res.chunks;
+      if (state.selectedDocFilter === docId) state.selectedDocFilter = null;
+      state.statusNote = `已从本地知识库移除文档《${docId}》`;
+      renderShell();
+    };
+  });
+
+  const scopeSelect = document.getElementById("doc-filter-select") as HTMLSelectElement | null;
+  if (scopeSelect) {
+    scopeSelect.onchange = () => {
+      state.selectedDocFilter = scopeSelect.value.trim() || null;
+      state.statusNote = state.selectedDocFilter
+        ? `已限定检索范围：《${state.selectedDocFilter}》`
+        : "已恢复全库跨文档综合检索";
+      renderShell();
+    };
+  }
+
+  const clearFilterBtn = document.getElementById("clear-doc-filter-btn");
+  if (clearFilterBtn) {
+    clearFilterBtn.onclick = () => {
+      state.selectedDocFilter = null;
+      state.statusNote = "已恢复全库跨文档综合检索";
+      renderShell();
+    };
+  }
+
+  const resetScopeBadgeBtn = document.getElementById("reset-scope-badge-btn");
+  if (resetScopeBadgeBtn) {
+    resetScopeBadgeBtn.onclick = () => {
+      state.selectedDocFilter = null;
+      state.statusNote = "已恢复全库跨文档综合检索";
+      renderShell();
+    };
+  }
+
+  document.querySelectorAll<HTMLElement>("[data-lib-cat]").forEach((btn) => {
+    btn.onclick = () => {
+      const cat = btn.dataset.libCat as "all" | "uploaded" | "seed" | undefined;
+      if (cat) {
+        state.libraryCategory = cat;
+        renderShell();
+      }
+    };
+  });
+
+  const toggleSeedsBtn = document.getElementById("toggle-seeds-btn");
+  if (toggleSeedsBtn) {
+    toggleSeedsBtn.onclick = () => {
+      state.hideSeedChunks = !state.hideSeedChunks;
+      window.localStorage.setItem("openlearnos_hide_seeds", state.hideSeedChunks ? "1" : "0");
+      state.statusNote = state.hideSeedChunks
+        ? "已隐藏官方演示文档，当前仅检索您的资料"
+        : "已恢复显示官方演示文档";
+      renderShell();
+    };
+  }
+
   document.querySelectorAll<HTMLElement>("[data-cite-chunk]").forEach((el) => {
     el.onclick = () => {
       const chunkId = el.dataset.citeChunk;
@@ -937,7 +1130,8 @@ async function handleDispatch(promptText: string): Promise<void> {
       state.sessionId,
       state.mode,
       promptText,
-      state.guardianUnlocked
+      state.guardianUnlocked,
+      state.selectedDocFilter ?? undefined
     );
     state.activeAgentRun = res.run;
     state.memory = res.memory;
@@ -952,7 +1146,8 @@ async function handleDispatch(promptText: string): Promise<void> {
     state.sessionId,
     state.mode,
     promptText,
-    state.guardianUnlocked
+    state.guardianUnlocked,
+    state.selectedDocFilter ?? undefined
   );
   state.lastBuildMs = prep.context.buildTimeMs;
   state.totalStoredTurns = prep.context.totalStoredTurns;

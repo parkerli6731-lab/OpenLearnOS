@@ -71,11 +71,20 @@ export class CoreWorkerClient {
     return this.call({ type: "INGEST_RAW_DOCUMENTS", documents });
   }
 
+  resetAllChunks(chunks: readonly DocumentChunk[]): Promise<{ totalChunks: number; chunks: readonly DocumentChunk[] }> {
+    return this.call({ type: "RESET_ALL_CHUNKS", chunks });
+  }
+
+  deleteDocument(docId: string): Promise<{ totalChunks: number; chunks: readonly DocumentChunk[] }> {
+    return this.call({ type: "DELETE_DOCUMENT", docId });
+  }
+
   prepareTurn(
     sessionId: string,
     mode: PersonaMode,
     userPrompt: string,
-    guardianRevealUnlocked: boolean
+    guardianRevealUnlocked: boolean,
+    docIdFilter?: string
   ): Promise<PreparedTurnResult> {
     return this.call({
       type: "PREPARE_TURN",
@@ -83,6 +92,7 @@ export class CoreWorkerClient {
       mode,
       userPrompt,
       guardianRevealUnlocked,
+      ...(docIdFilter ? { docIdFilter } : {}),
     });
   }
 
@@ -123,7 +133,8 @@ export class CoreWorkerClient {
     sessionId: string,
     mode: PersonaMode,
     goal: string,
-    guardianRevealUnlocked: boolean
+    guardianRevealUnlocked: boolean,
+    docIdFilter?: string
   ): Promise<AgentGoalWorkerPayload> {
     return this.call({
       type: "RUN_AGENT_GOAL",
@@ -131,6 +142,7 @@ export class CoreWorkerClient {
       mode,
       goal,
       guardianRevealUnlocked,
+      ...(docIdFilter ? { docIdFilter } : {}),
     });
   }
 

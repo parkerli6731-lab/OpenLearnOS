@@ -48,6 +48,11 @@ export interface RetrievalEvalReport {
 
 export interface HybridRetrieverContract {
   indexChunks(chunks: readonly DocumentChunk[]): void;
-  search(query: string, topK: number, queryEmbedding?: readonly number[]): readonly RetrievalHit[];
+  search(
+    query: string,
+    topK: number,
+    queryEmbedding?: readonly number[],
+    docIdFilter?: string
+  ): readonly RetrievalHit[];
   evaluateRetrieval(cases: readonly EvalCase[], topK: number): RetrievalEvalReport;
 }
