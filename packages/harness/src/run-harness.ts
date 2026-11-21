@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import type { DocumentChunk } from "@openlearnos/contracts";
+import type { CitationRef, DocumentChunk, DocumentExportData } from "@openlearnos/contracts";
 import {
   AuditableMemoryStore,
   InMemoryTurnEngine,
@@ -7,6 +7,9 @@ import {
   LocalHybridRetriever,
   MultiFormatDocumentParser,
   SocraticSafetyGate,
+  exportDocx,
+  exportPdf,
+  exportXlsx,
 } from "@openlearnos/core";
 import { SHELL_PROFILES } from "@openlearnos/ui";
 import * as fflate from "fflate";
@@ -485,6 +488,81 @@ function verifyDocumentScopedRetrievalAndFiltering(): void {
   console.log("[PASS] Document Scoped Retrieval & Agent Orchestration Harness: strict isolation verified");
 }
 
+function verifyMultiFormatDocumentExporters(): void {
+  const sampleExportData: DocumentExportData = {
+    title: "一元二次方程根的判别式核心讲义",
+    markdown: `# 一元二次方程核心考点
+
+> 判别式 \\Delta = b^2 - 4ac 决定实根个数。必须在标准形式 ax^2 + bx + c = 0 (a \\neq 0) 下计算。
+
+## 判别式三种情形
+- 当 \\Delta > 0 时，有两个不相等的实数根
+- 当 \\Delta = 0 时，有两个相等的实数根
+- 当 \\Delta < 0 时，无实数根
+
+### 易错提醒
+如果二次项系数含字母，必须先确保二次项系数不为零！`,
+    mode: "k12",
+    citations: [
+      {
+        docId: "K12_一元二次方程精讲.md",
+        page: 1,
+        excerpt: "判别式 Delta = b^2 - 4ac，Delta > 0 两个不等实根，Delta = 0 两个相等实根",
+      },
+    ],
+    quiz: {
+      quizId: "quiz-root-1",
+      conceptTopic: "一元二次方程判别式",
+      question: "当 \\Delta < 0 时，一元二次方程在实数范围内有几个实数根？",
+      options: ["0个（无实数根）", "1个", "2个", "无数个"],
+      correctIndex: 0,
+      explanation: "判别式小于0时，平方根在实数集无意义，因此无实数根。",
+    },
+  };
+
+  // 1. Verify Word (.docx) export
+  const docxBytes = exportDocx(sampleExportData);
+  assert.ok(docxBytes instanceof Uint8Array, "exportDocx must return Uint8Array");
+  assert.ok(docxBytes.length > 500, "Docx file size should be reasonable (> 500 bytes)");
+  const docxUnzipped = fflate.unzipSync(docxBytes);
+  assert.ok(docxUnzipped["word/document.xml"], "Docx must contain word/document.xml");
+  assert.ok(docxUnzipped["[Content_Types].xml"], "Docx must contain [Content_Types].xml");
+  const docXmlStr = fflate.strFromU8(docxUnzipped["word/document.xml"]!);
+  assert.ok(docXmlStr.includes("一元二次方程核心考点"), "Docx document.xml must include heading");
+  assert.ok(docXmlStr.includes("K12_一元二次方程精讲.md"), "Docx document.xml must include citation table");
+  assert.ok(docXmlStr.includes("当 \\Delta &lt; 0 时，一元二次方程在实数范围内有几个实数根？"), "Docx must include quiz cards");
+
+  // 2. Verify Excel (.xlsx) export
+  const xlsxBytes = exportXlsx(sampleExportData);
+  assert.ok(xlsxBytes instanceof Uint8Array, "exportXlsx must return Uint8Array");
+  assert.ok(xlsxBytes.length > 500, "Xlsx file size should be reasonable (> 500 bytes)");
+  const xlsxUnzipped = fflate.unzipSync(xlsxBytes);
+  assert.ok(xlsxUnzipped["xl/workbook.xml"], "Xlsx must contain xl/workbook.xml");
+  assert.ok(xlsxUnzipped["xl/worksheets/sheet1.xml"], "Xlsx must contain sheet1.xml (知识笔记清单)");
+  assert.ok(xlsxUnzipped["xl/worksheets/sheet2.xml"], "Xlsx must contain sheet2.xml (掌握度题库)");
+  const sheet1XmlStr = fflate.strFromU8(xlsxUnzipped["xl/worksheets/sheet1.xml"]!);
+  assert.ok(sheet1XmlStr.includes("一元二次方程核心考点"), "Xlsx sheet1 must include heading");
+  assert.ok(sheet1XmlStr.includes("K12_一元二次方程精讲.md"), "Xlsx sheet1 must include citation");
+  const sheet2XmlStr = fflate.strFromU8(xlsxUnzipped["xl/worksheets/sheet2.xml"]!);
+  assert.ok(sheet2XmlStr.includes("一元二次方程在实数范围内有几个实数根"), "Xlsx sheet2 must include quiz");
+
+  // 3. Verify PDF (.pdf) export
+  const pdfBytes = exportPdf(sampleExportData);
+  assert.ok(pdfBytes instanceof Uint8Array, "exportPdf must return Uint8Array");
+  assert.ok(pdfBytes.length > 500, "Pdf file size should be reasonable (> 500 bytes)");
+  const pdfHead = String.fromCharCode(...pdfBytes.subarray(0, 8));
+  assert.ok(pdfHead.startsWith("%PDF-1.4"), "PDF must have %PDF-1.4 magic header");
+  const pdfTail = String.fromCharCode(...pdfBytes.subarray(pdfBytes.length - 64));
+  assert.ok(pdfTail.includes("%%EOF"), "PDF must conclude with %%EOF trailer marker");
+  const pdfFullStr = String.fromCharCode(...pdfBytes);
+  assert.ok(pdfFullStr.includes("/STSong-Light"), "PDF must embed STSong-Light CJK font descriptor");
+  assert.ok(pdfFullStr.includes("/UniGB-UTF16-H"), "PDF must use UniGB-UTF16-H CJK encoding");
+
+  console.log(
+    `[PASS] Multi-Format Exporter Harness: docx (${docxBytes.length}B), xlsx (${xlsxBytes.length}B), pdf (${pdfBytes.length}B) validated`
+  );
+}
+
 verify150TurnPerformance();
 verifyHybridRagGoldenEval();
 verifyDocumentScopedRetrievalAndFiltering();
@@ -492,4 +570,5 @@ verifyAuditableMemoryInvariants();
 verifyK12SocraticAndSecretRedaction();
 verifyAutonomousLearningAgentLoop();
 await verifyMultiFormatDocumentIngestion();
+verifyMultiFormatDocumentExporters();
 console.log("\nALL DIFFERENTIAL & INVARIANT HARNESS CHECKS PASSED.");

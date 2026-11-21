@@ -1,7 +1,9 @@
 import "./styles.css";
 import type {
   AgentRunResult,
+  CitationRef,
   DocumentChunk,
+  DocumentExportData,
   LivingNoteExport,
   PersonaMode,
   QuizEvaluationResult,
@@ -116,7 +118,21 @@ function downloadTextFile(filename: string, content: string, mime = "text/plain;
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function downloadBinaryFile(filename: string, content: Uint8Array, mime = "application/octet-stream"): void {
+  const blob = new Blob([content as unknown as BlobPart], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
 
@@ -615,11 +631,33 @@ function renderAgentWorkspace(): string {
 
     ${
       activeNote
-        ? `<div class="card">
-            <div class="card-title"><span>📦 Living Note 与 Anki 资产沉淀</span></div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
-              <button class="btn primary" id="export-md-btn">⬇ 导出 Markdown 活体笔记</button>
-              <button class="btn" id="export-anki-btn">⬇ 导出 Anki CSV 复习卡</button>
+        ? `<div class="export-suite-card">
+            <div class="export-suite-header">
+              <div class="export-suite-title">
+                <span>📦 学习成果与多格式全量导出</span>
+                <span class="pill ok">PDF · Word · Excel · MD · Anki</span>
+              </div>
+              <div style="font-size:0.75rem; color:var(--muted);">100% 浏览器本地离线生成 · 无需第三方服务器</div>
+            </div>
+            <div class="export-btn-group">
+              <button class="export-btn pdf" id="export-pdf-btn" title="导出排版精美的高清 PDF 讲义">
+                📕 导出 PDF 讲义 (.pdf)
+              </button>
+              <button class="export-btn docx" id="export-docx-btn" title="导出微软 Office / WPS 兼容的标准 Word 格式 (.docx)">
+                📘 导出 Word 教案 (.docx)
+              </button>
+              <button class="export-btn xlsx" id="export-xlsx-btn" title="导出包含知识清单与题库的双工作表 Excel 表格 (.xlsx)">
+                📊 导出 Excel 题库 (.xlsx)
+              </button>
+              <button class="export-btn md" id="export-md-btn" title="导出通用 Markdown 活体笔记 (.md)">
+                📝 导出 Markdown (.md)
+              </button>
+              <button class="export-btn anki" id="export-anki-btn" title="导出可直接导入 Anki 的问答抽认卡 (.csv)">
+                🗂️ 导出 Anki 卡片 (.csv)
+              </button>
+              <button class="export-btn print" id="export-print-btn" title="调用浏览器原生打印面板，可另存为系统原生矢量 PDF">
+                🖨️ 原生打印 / 矢量 PDF
+              </button>
             </div>
           </div>`
         : ""
@@ -638,18 +676,37 @@ function renderChatWorkspace(): string {
     hiddenCount > 0
       ? `<div class="pill" style="align-self:center;">⚡ 虚拟窗口保护已激活：已折叠前 ${hiddenCount} 条 DOM（总计 ${state.totalStoredTurns} 轮），确保 Chrome/Safari/Firefox 零卡顿</div>`
       : "";
-  return (
-    notice +
-    sliced
-      .map(
-        (t) => `
-      <div class="msg ${t.role}">
-        <div class="msg-meta">${t.role === "user" ? "学习者" : "OpenLearnOS"} · #${t.index + 1}</div>
-        <div class="rich-markdown-body">${renderRichTextHtml(t.content)}</div>
-      </div>`
-      )
-      .join("")
-  );
+
+  const chatMsgs = sliced
+    .map(
+      (t) => `
+    <div class="msg ${t.role}">
+      <div class="msg-meta">${t.role === "user" ? "学习者" : "OpenLearnOS"} · #${t.index + 1}</div>
+      <div class="rich-markdown-body">${renderRichTextHtml(t.content)}</div>
+    </div>`
+    )
+    .join("");
+
+  const chatExport = `
+    <div class="export-suite-card" style="margin-top:14px;">
+      <div class="export-suite-header">
+        <div class="export-suite-title">
+          <span>💬 导出当前双栏溯源问答记录</span>
+          <span class="pill">共 ${state.visibleTurns.length} 轮问答</span>
+        </div>
+        <div style="font-size:0.74rem; color:var(--muted);">100% 浏览器本地离线生成</div>
+      </div>
+      <div class="export-btn-group">
+        <button class="export-btn pdf" id="export-chat-pdf-btn">📕 导出问答 PDF</button>
+        <button class="export-btn docx" id="export-chat-docx-btn">📘 导出问答 Word (.docx)</button>
+        <button class="export-btn xlsx" id="export-chat-xlsx-btn">📊 导出问答 Excel (.xlsx)</button>
+        <button class="export-btn md" id="export-chat-md-btn">📝 导出问答 Markdown</button>
+        <button class="export-btn print" id="export-chat-print-btn">🖨️ 打印当前对话</button>
+      </div>
+    </div>
+  `;
+
+  return notice + chatMsgs + chatExport;
 }
 
 function renderRightPanel(): string {
@@ -792,11 +849,94 @@ function bindEvents(): void {
     };
   });
 
+  function getAgentExportData(): DocumentExportData | null {
+    const note = state.lastQuizEval?.livingNote ?? state.activeAgentRun?.livingNote;
+    if (!note) return null;
+    return {
+      title: note.title || `OpenLearnOS 学习活体笔记 (${state.mode.toUpperCase()})`,
+      markdown: note.markdown,
+      citations: note.citations,
+      quiz: state.activeAgentRun?.quiz,
+      mode: state.mode,
+      createdAtMs: Date.now(),
+    };
+  }
+
+  function getChatExportData(): DocumentExportData | null {
+    if (state.visibleTurns.length === 0) return null;
+    const title = `OpenLearnOS 双栏溯源对话记录 (${state.mode.toUpperCase()})`;
+    const mdParts: string[] = [
+      `# ${title}`,
+      `> 模式：${state.mode.toUpperCase()} · 导出时间：${new Date().toLocaleString()}`,
+      "",
+    ];
+    const allCitations: CitationRef[] = [];
+    for (const t of state.visibleTurns) {
+      const roleLabel = t.role === "user" ? "🙋 学习者提问" : "🤖 OpenLearnOS 导师回答";
+      mdParts.push(`### ${roleLabel}`);
+      mdParts.push(t.content);
+      mdParts.push("");
+      if (t.citations && t.citations.length > 0) {
+        allCitations.push(...t.citations);
+      }
+    }
+    return {
+      title,
+      markdown: mdParts.join("\n"),
+      citations: allCitations,
+      mode: state.mode,
+      createdAtMs: Date.now(),
+    };
+  }
+
+  // Agent Export Handlers
+  const exportPdfBtn = document.getElementById("export-pdf-btn");
+  if (exportPdfBtn) {
+    exportPdfBtn.onclick = async () => {
+      const data = getAgentExportData();
+      if (!data) return;
+      state.statusNote = "正在端侧生成高清 PDF 讲义...";
+      renderShell();
+      const res = await coreClient.exportDocument("pdf", data, `OpenLearnOS-${state.mode.toUpperCase()}-Note`);
+      downloadBinaryFile(res.filename, res.binary, res.mime);
+      state.statusNote = `已成功导出 ${res.filename}`;
+      renderShell();
+    };
+  }
+
+  const exportDocxBtn = document.getElementById("export-docx-btn");
+  if (exportDocxBtn) {
+    exportDocxBtn.onclick = async () => {
+      const data = getAgentExportData();
+      if (!data) return;
+      state.statusNote = "正在端侧生成 Word (.docx) 教案...";
+      renderShell();
+      const res = await coreClient.exportDocument("docx", data, `OpenLearnOS-${state.mode.toUpperCase()}-Note`);
+      downloadBinaryFile(res.filename, res.binary, res.mime);
+      state.statusNote = `已成功导出 ${res.filename}`;
+      renderShell();
+    };
+  }
+
+  const exportXlsxBtn = document.getElementById("export-xlsx-btn");
+  if (exportXlsxBtn) {
+    exportXlsxBtn.onclick = async () => {
+      const data = getAgentExportData();
+      if (!data) return;
+      state.statusNote = "正在端侧生成 Excel (.xlsx) 表格...";
+      renderShell();
+      const res = await coreClient.exportDocument("xlsx", data, `OpenLearnOS-${state.mode.toUpperCase()}-Note`);
+      downloadBinaryFile(res.filename, res.binary, res.mime);
+      state.statusNote = `已成功导出 ${res.filename}`;
+      renderShell();
+    };
+  }
+
   const exportMd = document.getElementById("export-md-btn");
   if (exportMd) {
     exportMd.onclick = () => {
       const note = state.lastQuizEval?.livingNote ?? state.activeAgentRun?.livingNote;
-      if (note) downloadTextFile("OpenLearnOS-Living-Note.md", note.markdown, "text/markdown;charset=utf-8");
+      if (note) downloadTextFile(`OpenLearnOS-${state.mode.toUpperCase()}-Note.md`, note.markdown, "text/markdown;charset=utf-8");
     };
   }
 
@@ -805,6 +945,72 @@ function bindEvents(): void {
     exportAnki.onclick = () => {
       const note = state.lastQuizEval?.livingNote ?? state.activeAgentRun?.livingNote;
       if (note) downloadTextFile("OpenLearnOS-Anki-Deck.csv", `Front,Back,Tags\n${note.ankiCsvRow}\n`, "text/csv;charset=utf-8");
+    };
+  }
+
+  const exportPrintBtn = document.getElementById("export-print-btn");
+  if (exportPrintBtn) {
+    exportPrintBtn.onclick = () => {
+      window.print();
+    };
+  }
+
+  // Chat Export Handlers
+  const exportChatPdfBtn = document.getElementById("export-chat-pdf-btn");
+  if (exportChatPdfBtn) {
+    exportChatPdfBtn.onclick = async () => {
+      const data = getChatExportData();
+      if (!data) return;
+      state.statusNote = "正在端侧生成问答记录 PDF...";
+      renderShell();
+      const res = await coreClient.exportDocument("pdf", data, `OpenLearnOS-Chat-${state.mode.toUpperCase()}`);
+      downloadBinaryFile(res.filename, res.binary, res.mime);
+      state.statusNote = `已成功导出 ${res.filename}`;
+      renderShell();
+    };
+  }
+
+  const exportChatDocxBtn = document.getElementById("export-chat-docx-btn");
+  if (exportChatDocxBtn) {
+    exportChatDocxBtn.onclick = async () => {
+      const data = getChatExportData();
+      if (!data) return;
+      state.statusNote = "正在端侧生成问答记录 Word (.docx)...";
+      renderShell();
+      const res = await coreClient.exportDocument("docx", data, `OpenLearnOS-Chat-${state.mode.toUpperCase()}`);
+      downloadBinaryFile(res.filename, res.binary, res.mime);
+      state.statusNote = `已成功导出 ${res.filename}`;
+      renderShell();
+    };
+  }
+
+  const exportChatXlsxBtn = document.getElementById("export-chat-xlsx-btn");
+  if (exportChatXlsxBtn) {
+    exportChatXlsxBtn.onclick = async () => {
+      const data = getChatExportData();
+      if (!data) return;
+      state.statusNote = "正在端侧生成问答记录 Excel (.xlsx)...";
+      renderShell();
+      const res = await coreClient.exportDocument("xlsx", data, `OpenLearnOS-Chat-${state.mode.toUpperCase()}`);
+      downloadBinaryFile(res.filename, res.binary, res.mime);
+      state.statusNote = `已成功导出 ${res.filename}`;
+      renderShell();
+    };
+  }
+
+  const exportChatMdBtn = document.getElementById("export-chat-md-btn");
+  if (exportChatMdBtn) {
+    exportChatMdBtn.onclick = () => {
+      const data = getChatExportData();
+      if (!data) return;
+      downloadTextFile(`OpenLearnOS-Chat-${state.mode.toUpperCase()}.md`, data.markdown, "text/markdown;charset=utf-8");
+    };
+  }
+
+  const exportChatPrintBtn = document.getElementById("export-chat-print-btn");
+  if (exportChatPrintBtn) {
+    exportChatPrintBtn.onclick = () => {
+      window.print();
     };
   }
 

@@ -2,6 +2,7 @@ import type {
   CitationRef,
   ContextWindowSlice,
   DocumentChunk,
+  DocumentExportData,
   EvalCase,
   PersonaMode,
   RetrievalEvalReport,
@@ -9,6 +10,7 @@ import type {
 } from "@openlearnos/contracts";
 import type {
   AgentGoalWorkerPayload,
+  DocumentExportResultPayload,
   MemorySnapshot,
   PreparedTurnResult,
   QuizSubmitWorkerPayload,
@@ -164,6 +166,19 @@ export class CoreWorkerClient {
       sessionId,
       quizId,
       selectedIndex,
+    });
+  }
+
+  exportDocument(
+    format: "docx" | "xlsx" | "pdf",
+    data: DocumentExportData,
+    filenamePrefix?: string
+  ): Promise<DocumentExportResultPayload> {
+    return this.call({
+      type: "EXPORT_DOCUMENT",
+      format,
+      data,
+      ...(filenamePrefix ? { filenamePrefix } : {}),
     });
   }
 }

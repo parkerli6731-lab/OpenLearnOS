@@ -36,6 +36,17 @@ export interface LivingNoteExport {
   readonly citations: readonly CitationRef[];
 }
 
+export type ExportFormat = "pdf" | "docx" | "xlsx" | "markdown" | "anki_csv";
+
+export interface DocumentExportData {
+  readonly title: string;
+  readonly markdown: string;
+  readonly citations?: readonly CitationRef[] | undefined;
+  readonly quiz?: MasteryQuizItem | undefined;
+  readonly mode?: PersonaMode | undefined;
+  readonly createdAtMs?: number | undefined;
+}
+
 export interface AgentRunResult {
   readonly runId: string;
   readonly goal: string;

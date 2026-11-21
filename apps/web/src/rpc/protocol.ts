@@ -3,6 +3,7 @@ import type {
   CitationRef,
   ContextWindowSlice,
   DocumentChunk,
+  DocumentExportData,
   EvalCase,
   L1TraceRecord,
   L2ConceptNode,
@@ -69,7 +70,19 @@ export type WorkerRequestPayload =
       sessionId: string;
       quizId: string;
       selectedIndex: number;
+    }
+  | {
+      type: "EXPORT_DOCUMENT";
+      format: "docx" | "xlsx" | "pdf";
+      data: DocumentExportData;
+      filenamePrefix?: string | undefined;
     };
+
+export interface DocumentExportResultPayload {
+  readonly binary: Uint8Array;
+  readonly mime: string;
+  readonly filename: string;
+}
 
 export interface AgentGoalWorkerPayload {
   readonly run: AgentRunResult;
