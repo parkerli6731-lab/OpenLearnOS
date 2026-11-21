@@ -12,9 +12,13 @@ import {
   LocalHybridRetriever,
   MultiFormatDocumentParser,
   SocraticSafetyGate,
+  exportDocx,
+  exportPdf,
+  exportXlsx,
 } from "@openlearnos/core";
 import type {
   AgentGoalWorkerPayload,
+  DocumentExportResultPayload,
   MemorySnapshot,
   PreparedTurnResult,
   QuizSubmitWorkerPayload,
@@ -375,6 +379,32 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         const payload: QuizSubmitWorkerPayload = {
           evaluation,
           memory: snapshotMemory(),
+        };
+        reply({ id: req.id, ok: true, payload });
+        break;
+      }
+      case "EXPORT_DOCUMENT": {
+        let binary: Uint8Array;
+        let mime: string;
+        let ext: string;
+        if (req.format === "docx") {
+          binary = exportDocx(req.data);
+          mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+          ext = "docx";
+        } else if (req.format === "xlsx") {
+          binary = exportXlsx(req.data);
+          mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+          ext = "xlsx";
+        } else {
+          binary = exportPdf(req.data);
+          mime = "application/pdf";
+          ext = "pdf";
+        }
+        const filename = `${req.filenamePrefix || "OpenLearnOS-Document"}.${ext}`;
+        const payload: DocumentExportResultPayload = {
+          binary,
+          mime,
+          filename,
         };
         reply({ id: req.id, ok: true, payload });
         break;

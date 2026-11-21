@@ -1,4 +1,4 @@
-const CACHE_NAME = "openlearnos-pwa-v0.4.0";
+const CACHE_NAME = "openlearnos-pwa-v0.5.0";
 const CORE_ASSETS = ["./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {
